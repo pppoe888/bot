@@ -1,7 +1,7 @@
-from telegram import Update
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift
-from keyboards import get_car_keyboard
 from datetime import datetime
 
 async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,9 +36,19 @@ async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Нет доступных машин.")
             return
 
+        # Создаем клавиатуру с машинами
+        keyboard = []
+        for car in cars:
+            car_text = f"🚗 {car.number}"
+            if car.model:
+                car_text += f" ({car.model})"
+            keyboard.append([InlineKeyboardButton(car_text, callback_data=f"select_car_{car.id}")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await update.message.reply_text(
-            "🚗 Выберите машину для смены:",
-            reply_markup=get_car_keyboard(cars)
+            "🚗 Выберите машину для начала смены:",
+            reply_markup=reply_markup
         )
 
     except Exception as e:
@@ -49,38 +59,34 @@ async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def select_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Выбор машины для смены"""
     await update.callback_query.answer()
-
+    
     car_id = int(update.callback_query.data.split("_")[-1])
+    
     db = SessionLocal()
-
     try:
         user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
         car = db.query(Car).filter(Car.id == car_id).first()
-
+        
         if not user or not car:
-            await update.callback_query.message.reply_text("❌ Ошибка при выборе машины.")
+            await update.callback_query.message.reply_text("❌ Ошибка выбора машины.")
             return
-
+        
         # Создаем новую смену
         new_shift = Shift(
             driver_id=user.id,
             car_id=car.id,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(),
             is_active=True
         )
-
+        
         db.add(new_shift)
         db.commit()
-
-        car_info = f"{car.number}"
-        if car.brand and car.model:
-            car_info += f" ({car.brand} {car.model})"
-
+        
         await update.callback_query.message.reply_text(
-            f"✅ Смена начата!\n🚗 Машина: {car_info}\n⏰ Время начала: {new_shift.start_time.strftime('%H:%M %d.%m.%Y')}"
+            f"✅ Смена начата!\n🚗 Машина: {car.number}\n⏰ Время начала: {new_shift.start_time.strftime('%H:%M')}"
         )
-
+        
     except Exception as e:
-        await update.callback_query.message.reply_text(f"❌ Ошибка при начале смены: {e}")
+        await update.callback_query.message.reply_text(f"❌ Ошибка: {e}")
     finally:
         db.close()

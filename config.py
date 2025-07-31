@@ -11,5 +11,5 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 if ADMIN_ID == 0:
     raise ValueError("ADMIN_ID не установлен в переменных окружения")
 
-# Настройки базы данных
-DATABASE_URL = "sqlite:///bot.db"
+# URL базы данных
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bot.db")

@@ -61,8 +61,11 @@ async def create_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка выбора роли"""
+    from keyboards import get_phone_button, get_role_selection
+    from config import ADMIN_ID
+    
     text = update.message.text
-
+    
     # Удаляем предыдущие сообщения
     try:
         if context.user_data.get("last_message_id"):
@@ -74,34 +77,9 @@ async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TY
     except:
         pass
 
+    # Обработка выбора администратора
     if text == "👨‍💼 Администратор":
-        # Проверяем права администратора
-        if update.effective_user.id == ADMIN_ID:
-            # Создаем или авторизуем админа
-            db = SessionLocal()
-            admin_user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-            
-            if not admin_user:
-                admin_user = User(
-                    telegram_id=update.effective_user.id,
-                    name="Администратор",
-                    phone="admin",
-                    role="admin"
-                )
-                db.add(admin_user)
-                db.commit()
-            
-            db.close()
-            
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="✅ Добро пожаловать, Администратор!",
-                reply_markup=get_admin_menu()
-            )
-            context.user_data.clear()
-            context.user_data["last_message_id"] = message.message_id
-            return
-        else:
+        if update.effective_user.id != ADMIN_ID:
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="❌ У вас нет прав администратора.\n\n🔐 Выберите вашу роль:",
@@ -109,6 +87,31 @@ async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             context.user_data["last_message_id"] = message.message_id
             return
+        
+        # Проверяем, создан ли админ в базе
+        db = SessionLocal()
+        admin_user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        
+        if not admin_user:
+            admin_user = User(
+                telegram_id=update.effective_user.id,
+                name="Администратор",
+                phone="admin",
+                role="admin"
+            )
+            db.add(admin_user)
+            db.commit()
+        
+        db.close()
+        
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="✅ Добро пожаловать, администратор!",
+            reply_markup=get_admin_menu()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
             
     elif text == "🚛 Водитель":
         selected_role = "driver"

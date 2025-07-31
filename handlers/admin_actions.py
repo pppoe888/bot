@@ -1,8 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car
-from keyboards import get_back_keyboard, get_confirm_keyboard
-from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR
+from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_menu
 
 async def delete_previous_messages(update, context):
     """Удаляет предыдущие сообщения"""
@@ -21,6 +20,12 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстовых сообщений в админке"""
     admin_action = context.user_data.get("admin_action")
     text = update.message.text
+
+    # Проверяем, нажал ли пользователь кнопку "Назад"
+    if text == "⬅️ Назад":
+        from main import handle_back_button
+        await handle_back_button(update, context)
+        return
 
     await delete_previous_messages(update, context)
 
@@ -189,3 +194,146 @@ async def handle_car_input(update, context, text):
             reply_markup=get_confirm_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
+
+async def confirm_add_driver(update, context):
+    """Подтверждение добавления водителя"""
+    driver_data = context.user_data.get("driver_data", {})
+
+    if not driver_data.get("name") or not driver_data.get("phone"):
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Не все данные введены"
+        )
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    db = SessionLocal()
+    try:
+        new_driver = User(
+            telegram_id=0,
+            name=driver_data["name"],
+            phone=driver_data["phone"],
+            role="driver"
+        )
+        db.add(new_driver)
+        db.commit()
+
+        await delete_previous_messages(update, context)
+
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"✅ Водитель {driver_data['name']} успешно добавлен!",
+            reply_markup=get_admin_menu()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+
+    except Exception as e:
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"❌ Ошибка при добавлении: {e}"
+        )
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+async def confirm_add_logist(update, context):
+    """Подтверждение добавления логиста"""
+    logist_data = context.user_data.get("logist_data", {})
+
+    if not logist_data.get("name") or not logist_data.get("phone"):
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Не все данные введены"
+        )
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    db = SessionLocal()
+    try:
+        new_logist = User(
+            telegram_id=0,
+            name=logist_data["name"],
+            phone=logist_data["phone"],
+            role="logist"
+        )
+        db.add(new_logist)
+        db.commit()
+
+        await delete_previous_messages(update, context)
+
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"✅ Логист {logist_data['name']} успешно добавлен!",
+            reply_markup=get_admin_menu()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+
+    except Exception as e:
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"❌ Ошибка при добавлении: {e}"
+        )
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+async def confirm_add_car(update, context):
+    """Подтверждение добавления машины"""
+    car_data = context.user_data.get("car_data", {})
+
+    if not car_data.get("number"):
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Номер машины не введен"
+        )
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    db = SessionLocal()
+    try:
+        new_car = Car(
+            number=car_data["number"],
+            brand=car_data.get("brand", ""),
+            model=car_data.get("model", ""),
+            fuel=car_data.get("fuel", "")
+        )
+        db.add(new_car)
+        db.commit()
+
+        await delete_previous_messages(update, context)
+
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"✅ Машина {car_data['number']} успешно добавлена!",
+            reply_markup=get_admin_menu()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+
+    except Exception as e:
+        await delete_previous_messages(update, context)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"❌ Ошибка при добавлении: {e}"
+        )
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+async def handle_confirm(update, context):
+    """Универсальный обработчик подтверждения"""
+    admin_action = context.user_data.get("admin_action")
+
+    if admin_action == "adding_driver":
+        await confirm_add_driver(update, context)
+    elif admin_action == "adding_logist":
+        await confirm_add_logist(update, context)
+    elif admin_action == "adding_car":
+        await confirm_add_car(update, context)
