@@ -4,7 +4,8 @@ def get_role_selection():
     """Клавиатура выбора роли"""
     keyboard = [
         ["👨‍💼 Администратор"],
-        ["📋 Логист", "🚛 Водитель"]
+        ["📋 Логист"],
+        ["🚛 Водитель"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
@@ -33,39 +34,14 @@ def get_driver_menu():
         ["💬 Чат водителей"],
         ["🅿️ Стоянка", "📊 Отчёт смен"]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
 def get_logist_menu():
     """Меню логиста"""
     keyboard = [
         ["📦 Список доставки"],
         ["💬 Чат водителей"],
-        ["📊 Отчёт смен", "🅿️ Стоянка"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_admin_inline_keyboard():
-    """Inline клавиатура для админ панели"""
-    keyboard = [
-        [InlineKeyboardButton("👥 Управление водителями", callback_data="manage_drivers")],
-        [InlineKeyboardButton("📋 Управление логистами", callback_data="manage_logists")],
-        [InlineKeyboardButton("🚗 Управление машинами", callback_data="manage_cars")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_car_keyboard(cars):
-    """Клавиатура для выбора машины"""
-    keyboard = []
-    for car in cars:
-        keyboard.append([InlineKeyboardButton(f"🚗 {car.number}", callback_data=f"select_car_{car.id}")])
-    return InlineKeyboardMarkup(keyboard)
-
-def get_confirmation_keyboard():
-    """Клавиатура подтверждения"""
-    keyboard = [
-        ["✅ Подтвердить", "❌ Отменить"],
-        ["⬅️ Назад"]
+        ["📊 Отчёт смен"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
@@ -74,16 +50,23 @@ def get_back_keyboard():
     keyboard = [["⬅️ Назад"]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def get_chat_keyboard(mode="normal"):
+def get_chat_menu():
     """Клавиатура для чата"""
-    if mode == "cancel":
-        keyboard = [["❌ Отменить"]]
-    else:
-        keyboard = [
-            ["✍️ Написать сообщение", "🔄 Обновить"],
-            ["⬅️ Назад"]
-        ]
+    keyboard = [
+        ["✍️ Написать сообщение", "🔄 Обновить"],
+        ["⬅️ Назад"]
+    ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_admin_inline_keyboard():
+    """Инлайн клавиатура админ панели"""
+    keyboard = [
+        [InlineKeyboardButton("👥 Управление водителями", callback_data="manage_drivers")],
+        [InlineKeyboardButton("🚗 Управление машинами", callback_data="manage_cars")],
+        [InlineKeyboardButton("📋 Управление логистами", callback_data="manage_logists")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_manage_drivers_keyboard():
     """Клавиатура управления водителями"""
@@ -113,18 +96,21 @@ def get_manage_logists_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_confirm_keyboard():
-    """Inline клавиатура подтверждения"""
+    """Клавиатура подтверждения"""
     keyboard = [
         [InlineKeyboardButton("✅ Подтвердить", callback_data="confirm")],
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+        [InlineKeyboardButton("❌ Отменить", callback_data="admin_panel")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_chat_menu():
-    """Клавиатура меню чата"""
-    keyboard = [
-        ["✍️ Написать сообщение", "🔄 Обновить"],
-        ["⬅️ Назад"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+def get_car_keyboard(cars):
+    """Клавиатура выбора машины"""
+    keyboard = []
+    for car in cars:
+        car_text = f"🚗 {car.number}"
+        if car.brand and car.model:
+            car_text += f" ({car.brand} {car.model})"
+        keyboard.append([InlineKeyboardButton(car_text, callback_data=f"select_car_{car.id}")])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(keyboard)

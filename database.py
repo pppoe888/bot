@@ -33,24 +33,26 @@ class Shift(Base):
     __tablename__ = "shifts"
     
     id = Column(Integer, primary_key=True, index=True)
-    driver_id = Column(Integer, ForeignKey("users.id"))
-    car_id = Column(Integer, ForeignKey("cars.id"))
-    start_time = Column(DateTime, default=datetime.utcnow)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
+    start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     
-    driver = relationship("User")
-    car = relationship("Car")
+    # Связи
+    driver = relationship("User", foreign_keys=[driver_id])
+    car = relationship("Car", foreign_keys=[car_id])
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     message = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
     
-    user = relationship("User")
+    # Связи
+    user = relationship("User", foreign_keys=[user_id])
 
 # Создание таблиц
 Base.metadata.create_all(bind=engine)

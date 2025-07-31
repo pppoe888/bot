@@ -1,9 +1,10 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import BOT_TOKEN
 from handlers.auth import start, handle_contact, create_admin, handle_role_selection
-from handlers.driver import start_shift
+from keyboards import get_role_selection
+from handlers.driver import start_shift, select_car
 from handlers.delivery import delivery_list
-from handlers.admin import admin_panel, manage_drivers, manage_cars, manage_logists
+from handlers.admin import admin_panel, manage_drivers, manage_cars, manage_logists, admin_stats
 from handlers.admin_actions import handle_admin_text, handle_add_driver, handle_add_logist, handle_add_car
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
 from handlers.parking import parking_check
@@ -12,96 +13,17 @@ from states import WAITING_ROLE_SELECTION
 from database import SessionLocal, User, Car
 
 async def delete_previous_messages(update, context):
-    """Удаляет предыдущие сообщения для очистки чата"""
+    """Удаляет предыдущие сообщения"""
     try:
         if context.user_data.get("last_message_id"):
             await context.bot.delete_message(
                 chat_id=update.effective_chat.id,
                 message_id=context.user_data["last_message_id"]
             )
-
         if update.message:
             await update.message.delete()
-
-        message_ids_to_delete = context.user_data.get("message_history", [])
-        for msg_id in message_ids_to_delete[-5:]:
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.effective_chat.id,
-                    message_id=msg_id
-                )
-            except:
-                continue
-
-        context.user_data["message_history"] = []
-
-    except Exception as e:
+    except:
         pass
-
-async def save_message_to_history(context, message_id):
-    """Сохраняет ID сообщения в историю для последующего удаления"""
-    if "message_history" not in context.user_data:
-        context.user_data["message_history"] = []
-
-    context.user_data["message_history"].append(message_id)
-
-    if len(context.user_data["message_history"]) > 10:
-        context.user_data["message_history"] = context.user_data["message_history"][-10:]
-
-async def block_media(update, context):
-    """Блокирует медиа сообщения и информирует пользователя."""
-    await delete_previous_messages(update, context)
-    message = await update.message.reply_text("Отправка фото, видео и файлов запрещена!")
-    context.user_data["last_message_id"] = message.message_id
-
-async def handle_back_button(update, context):
-    """Обработчик кнопки 'Назад'"""
-    from config import ADMIN_ID
-    from keyboards import get_admin_menu, get_driver_menu, get_logist_menu, get_role_selection
-    from database import SessionLocal, User
-
-    await delete_previous_messages(update, context)
-
-    # Очищаем состояния
-    context.user_data.pop("state", None)
-    context.user_data.pop("admin_action", None)
-    context.user_data.pop("driver_data", None)
-    context.user_data.pop("logist_data", None)
-    context.user_data.pop("car_data", None)
-
-    # Определяем роль пользователя и показываем соответствующее меню
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-
-        if user:
-            if user.role == "admin":
-                keyboard = get_admin_menu()
-                text = f"Добро пожаловать, Администратор {user.name}!"
-            elif user.role == "driver":
-                keyboard = get_driver_menu()
-                text = f"Добро пожаловать, водитель {user.name}!"
-            elif user.role == "logist":
-                keyboard = get_logist_menu()
-                text = f"Добро пожаловать, логист {user.name}!"
-            else:
-                keyboard = get_role_selection()
-                text = "Выберите вашу роль:"
-                context.user_data["state"] = WAITING_ROLE_SELECTION
-        else:
-            keyboard = get_role_selection()
-            text = "Выберите вашу роль:"
-            context.user_data["state"] = WAITING_ROLE_SELECTION
-
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=keyboard
-        )
-        context.user_data["last_message_id"] = message.message_id
-
-    finally:
-        db.close()
 
 async def confirm_add_driver(update, context):
     """Подтверждение добавления водителя"""
@@ -195,17 +117,6 @@ async def confirm_add_logist(update, context):
     finally:
         db.close()
 
-async def handle_confirm(update, context):
-    """Универсальный обработчик подтверждения"""
-    admin_action = context.user_data.get("admin_action")
-    
-    if admin_action == "adding_driver":
-        await confirm_add_driver(update, context)
-    elif admin_action == "adding_logist":
-        await confirm_add_logist(update, context)
-    elif admin_action == "adding_car":
-        await confirm_add_car(update, context)
-
 async def confirm_add_car(update, context):
     """Подтверждение добавления машины"""
     from keyboards import get_admin_menu
@@ -250,6 +161,64 @@ async def confirm_add_car(update, context):
     finally:
         db.close()
 
+async def handle_confirm(update, context):
+    """Универсальный обработчик подтверждения"""
+    admin_action = context.user_data.get("admin_action")
+
+    if admin_action == "adding_driver":
+        await confirm_add_driver(update, context)
+    elif admin_action == "adding_logist":
+        await confirm_add_logist(update, context)
+    elif admin_action == "adding_car":
+        await confirm_add_car(update, context)
+
+async def handle_back_button(update, context):
+    """Обработчик кнопки Назад"""
+    from keyboards import get_admin_menu, get_driver_menu, get_logist_menu
+    
+    # Очищаем состояние пользователя
+    context.user_data.clear()
+    
+    # Получаем роль пользователя
+    db = SessionLocal()
+    user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+    
+    if user:
+        if user.role == "admin":
+            keyboard = get_admin_menu()
+            text = "🛠️ Админ панель"
+        elif user.role == "driver":
+            keyboard = get_driver_menu()
+            text = "🚛 Меню водителя"
+        elif user.role == "logist":
+            keyboard = get_logist_menu()
+            text = "📋 Меню логиста"
+        else:
+            keyboard = get_role_selection()
+            text = "🔐 Выберите вашу роль:"
+    else:
+        keyboard = get_role_selection()
+        text = "🔐 Выберите вашу роль:"
+    
+    db.close()
+    
+    await delete_previous_messages(update, context)
+    message = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text,
+        reply_markup=keyboard
+    )
+    context.user_data["last_message_id"] = message.message_id
+
+async def block_media(update, context):
+    """Блокировка медиа файлов"""
+    await delete_previous_messages(update, context)
+    message = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="❌ Отправка медиа файлов запрещена. Используйте только текстовые сообщения."
+    )
+    context.user_data["last_message_id"] = message.message_id
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -268,9 +237,13 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
     app.add_handler(CallbackQueryHandler(handle_add_logist, pattern="^add_logist$"))
     app.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
+    app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
 
     # Обработчики подтверждения
     app.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
+
+    # Обработчик выбора машины
+    app.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
 
     # Обработчик для выбора роли
     app.add_handler(MessageHandler(
@@ -287,10 +260,10 @@ def main():
     # Обработчики текстовых сообщений с кнопками меню
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🛠️ Админка"), admin_panel))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🚛 Начать смену"), start_shift))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📦 Заказы"), delivery_list))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("💬 Чат"), chat))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📦 Список доставки"), delivery_list))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("💬 Чат водителей"), chat))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🅿️ Стоянка"), parking_check))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📊 Отчет"), report))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📊 Отчёт смен"), report))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("⬅️ Назад"), handle_back_button))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("✍️ Написать сообщение"), write_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🔄 Обновить"), refresh_chat))
@@ -299,7 +272,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT, send_message_to_chat))
 
     # Блокировка медиа
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.AUDIO, block_media))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.AUDIO, block_media))
 
     print("Бот запущен...")
     app.run_polling()

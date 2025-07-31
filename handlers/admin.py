@@ -109,7 +109,7 @@ async def manage_logists(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["last_message_id"] = message.message_id
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Статистика админа"""
+    """Статистика системы"""
     await update.callback_query.answer()
 
     db = SessionLocal()
@@ -118,29 +118,31 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logists_count = db.query(User).filter(User.role == "logist").count()
         cars_count = db.query(Car).count()
         active_shifts = db.query(Shift).filter(Shift.end_time.is_(None)).count()
-    finally:
-        db.close()
 
-    text = f"📊 Статистика системы\n\n"
-    text += f"👥 Водителей: {drivers_count}\n"
-    text += f"📋 Логистов: {logists_count}\n"
-    text += f"🚗 Машин: {cars_count}\n"
-    text += f"🚛 Активных смен: {active_shifts}\n"
+        text = f"📊 Статистика системы\n\n"
+        text += f"👥 Водителей: {drivers_count}\n"
+        text += f"📋 Логистов: {logists_count}\n"
+        text += f"🚗 Машин: {cars_count}\n"
+        text += f"🚛 Активных смен: {active_shifts}\n"
 
-    keyboard = [
-        [InlineKeyboardButton("⬅️ Назад", callback_data="admin_panel")]
-    ]
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data="admin_panel")]
+        ]
 
-    try:
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception as e:
-        if "Message is not modified" in str(e):
-            await update.callback_query.answer()
-        else:
-            await update.callback_query.message.reply_text(
+        try:
+            await update.callback_query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+        except Exception as e:
+            if "Message is not modified" in str(e):
+                await update.callback_query.answer()
+            else:
+                await update.callback_query.message.reply_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+    except Exception as e:
+        await update.callback_query.message.reply_text(f"❌ Ошибка получения статистики: {e}")
+    finally:
+        db.close()

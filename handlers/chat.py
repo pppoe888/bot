@@ -110,6 +110,73 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data.clear()
     context.user_data["last_message_id"] = message.message_id
 
+from telegram import Update
+from telegram.ext import ContextTypes
+from database import SessionLocal, User, ChatMessage
+from keyboards import get_chat_menu, get_back_keyboard
+
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Открыть чат водителей"""
+    db = SessionLocal()
+    try:
+        # Получаем последние 10 сообщений
+        messages = db.query(ChatMessage).order_by(ChatMessage.timestamp.desc()).limit(10).all()
+        
+        if not messages:
+            text = "💬 Чат водителей\n\nСообщений пока нет."
+        else:
+            text = "💬 Чат водителей\n\n"
+            for msg in reversed(messages):
+                user = db.query(User).filter(User.id == msg.user_id).first()
+                username = user.name if user else "Неизвестный"
+                text += f"👤 {username}: {msg.message}\n"
+        
+        await update.message.reply_text(text, reply_markup=get_chat_menu())
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+    finally:
+        db.close()
+
+async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Написать сообщение в чат"""
+    context.user_data["waiting_for_message"] = True
+    await update.message.reply_text(
+        "✍️ Напишите ваше сообщение:",
+        reply_markup=get_back_keyboard()
+    )
+
+async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправить сообщение в чат"""
+    if not context.user_data.get("waiting_for_message"):
+        return
+    
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("❌ Пользователь не найден.")
+            return
+        
+        # Сохраняем сообщение
+        new_message = ChatMessage(
+            user_id=user.id,
+            message=update.message.text
+        )
+        db.add(new_message)
+        db.commit()
+        
+        context.user_data["waiting_for_message"] = False
+        await update.message.reply_text(
+            "✅ Сообщение отправлено!",
+            reply_markup=get_chat_menu()
+        )
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+    finally:
+        db.close()
+
 async def refresh_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновляет чат"""
+    """Обновить чат"""
     await chat(update, context)
