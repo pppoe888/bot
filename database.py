@@ -1,59 +1,55 @@
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime
+from config import DATABASE_URL
 
-DATABASE_URL = "sqlite:///bot.db"
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=True)
-    phone = Column(String, unique=True, nullable=False)
-    name = Column(String, nullable=False)
-    role = Column(String, default="driver")
     
-    # Связь с сменами
-    shifts = relationship("Shift", back_populates="driver")
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(Integer, unique=True, nullable=True, index=True)
+    name = Column(String, nullable=False)
+    phone = Column(String, unique=True, nullable=False)
+    role = Column(String, nullable=False)  # admin, driver, logist
 
 class Car(Base):
     __tablename__ = "cars"
-    id = Column(Integer, primary_key=True)
-    number = Column(String, unique=True, nullable=False)
-    brand = Column(String, nullable=False)
-    model = Column(String, nullable=False)
-    fuel = Column(String, nullable=False)
-    current_mileage = Column(Integer, default=0)
     
-    # Связь с сменами
-    shifts = relationship("Shift", back_populates="car")
+    id = Column(Integer, primary_key=True, index=True)
+    number = Column(String, unique=True, nullable=False)
+    brand = Column(String, default="")
+    model = Column(String, default="")
+    fuel = Column(String, default="")
+    current_mileage = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Shift(Base):
     __tablename__ = "shifts"
-    id = Column(Integer, primary_key=True)
-    driver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    car_id = Column(Integer, ForeignKey("cars.id"), nullable=False)
-    start_time = Column(DateTime, nullable=True)
-    end_time = Column(DateTime, nullable=True)
-    start_mileage = Column(Integer, nullable=True)
-    end_mileage = Column(Integer, nullable=True)
-    status = Column(String, default="active")
     
-    # Связи
-    driver = relationship("User", back_populates="shifts")
-    car = relationship("Car", back_populates="shifts")
+    id = Column(Integer, primary_key=True, index=True)
+    driver_id = Column(Integer, ForeignKey("users.id"))
+    car_id = Column(Integer, ForeignKey("cars.id"))
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
+    
+    driver = relationship("User")
+    car = relationship("Car")
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    message = Column(String, nullable=False)
-    timestamp = Column(DateTime, nullable=False)
     
-    # Связь с пользователем
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
     user = relationship("User")
 
 # Создание таблиц

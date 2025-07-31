@@ -37,3 +37,9 @@ async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🚗 Выберите машину для смены:",
         reply_markup=get_car_keyboard(cars)
     )
+from telegram import Update
+from telegram.ext import ContextTypes
+
+async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало смены водителя"""
+    await update.message.reply_text("🚛 Функция начала смены будет реализована позже")
