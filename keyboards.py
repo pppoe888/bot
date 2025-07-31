@@ -21,22 +21,55 @@ def get_phone_request_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
-def get_admin_menu():
-    """Меню администратора"""
-    keyboard = [
-        ["👤 Управление пользователями"],
-        ["🚗 Управление машинами"],
-        ["📊 Статистика"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 
 def get_admin_inline_keyboard():
-    """Inline клавиатура админа"""
+    """Inline клавиатура для админа"""
+    keyboard = [
+        [InlineKeyboardButton("🚗 Автомобили", callback_data="admin_cars")],
+        [InlineKeyboardButton("👥 Сотрудники", callback_data="admin_employees")],
+        [InlineKeyboardButton("🚛 Смены", callback_data="admin_shifts")],
+        [InlineKeyboardButton("📊 Отчеты", callback_data="admin_reports")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_cars_keyboard():
+    """Клавиатура раздела автомобили"""
+    keyboard = [
+        [InlineKeyboardButton("🚗 Управление машинами", callback_data="manage_cars")],
+        [InlineKeyboardButton("📊 Статистика по машинам", callback_data="cars_stats")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_employees_keyboard():
+    """Клавиатура раздела сотрудники"""
     keyboard = [
         [InlineKeyboardButton("👤 Управление водителями", callback_data="manage_drivers")],
-        [InlineKeyboardButton("🚗 Управление машинами", callback_data="manage_cars")],
         [InlineKeyboardButton("📋 Управление логистами", callback_data="manage_logists")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")]
+        [InlineKeyboardButton("📊 Статистика по сотрудникам", callback_data="employees_stats")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_shifts_keyboard():
+    """Клавиатура раздела смены"""
+    keyboard = [
+        [InlineKeyboardButton("🚛 Активные смены", callback_data="show_active_shifts")],
+        [InlineKeyboardButton("📋 История смен", callback_data="shifts_history")],
+        [InlineKeyboardButton("📊 Статистика смен", callback_data="shifts_stats")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_reports_keyboard():
+    """Клавиатура раздела отчеты"""
+    keyboard = [
+        [InlineKeyboardButton("📈 Общая статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton("📊 Отчет по сменам", callback_data="shifts_report")],
+        [InlineKeyboardButton("🚗 Отчет по машинам", callback_data="cars_report")],
+        [InlineKeyboardButton("👥 Отчет по сотрудникам", callback_data="employees_report")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
     ]
     return InlineKeyboardMarkup(keyboard)
 

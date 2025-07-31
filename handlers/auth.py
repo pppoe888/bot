@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import SessionLocal, User
-from keyboards import get_role_selection, get_admin_menu, get_driver_menu, get_logist_menu, get_contact_keyboard
+from keyboards import get_role_selection, get_driver_menu, get_logist_menu, get_contact_keyboard
 from config import ADMIN_ID
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

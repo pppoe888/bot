@@ -1,10 +1,11 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift
-from keyboards import get_admin_menu, get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard
+from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard
 import states
 from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR, EDITING_DRIVER, EDITING_LOGIST
 from config import ADMIN_ID
+from datetime import datetime
 
 async def delete_previous_messages(update, context):
     """Удаляет предыдущие сообщения"""
@@ -203,7 +204,7 @@ async def create_admin_entries(phone: str, name: str = "Администрато
             User.phone == phone, 
             User.role == "driver"
         ).first()
-        
+
         existing_logist = db.query(User).filter(
             User.phone == phone, 
             User.role == "logist"
@@ -263,7 +264,7 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Проверяем, существует ли уже пользователь с таким номером телефона
         existing_user = db.query(User).filter(User.phone == driver_data["phone"]).first()
-        
+
         if existing_user:
             text = f"❌ Пользователь с номером {driver_data['phone']} уже существует!\n\n"
             text += f"👤 Имя: {existing_user.name}\n"
@@ -314,7 +315,7 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Проверяем, существует ли уже пользователь с таким номером телефона
         existing_user = db.query(User).filter(User.phone == logist_data["phone"]).first()
-        
+
         if existing_user:
             text = f"❌ Пользователь с номером {logist_data['phone']} уже существует!\n\n"
             text += f"👤 Имя: {existing_user.name}\n"
@@ -365,7 +366,7 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Проверяем, существует ли уже машина с таким номером
         existing_car = db.query(Car).filter(Car.number == car_data["number"]).first()
-        
+
         if existing_car:
             text = f"❌ Машина с номером {car_data['number']} уже существует!\n\n"
             text += f"🏭 Марка: {existing_car.brand or 'Не указана'}\n"
@@ -416,7 +417,7 @@ async def show_drivers_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     db = SessionLocal()
     try:
         drivers = db.query(User).filter(User.role == "driver").all()
-        
+
         if not drivers:
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -428,7 +429,7 @@ async def show_drivers_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         action_text = "редактирования" if action_type.startswith("edit") else "удаления"
         text = f"👤 Выберите водителя для {action_text}:"
-        
+
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -444,11 +445,11 @@ async def show_drivers_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 async def edit_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Редактировать водителя"""
     driver_id = int(update.callback_query.data.split("_")[2])
-    
+
     db = SessionLocal()
     try:
         driver = db.query(User).filter(User.id == driver_id).first()
-        
+
         if not driver:
             await update.callback_query.answer("❌ Водитель не найден!")
             return
@@ -470,11 +471,11 @@ async def edit_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Удалить водителя"""
     driver_id = int(update.callback_query.data.split("_")[2])
-    
+
     db = SessionLocal()
     try:
         driver = db.query(User).filter(User.id == driver_id).first()
-        
+
         if not driver:
             await update.callback_query.answer("❌ Водитель не найден!")
             return
@@ -512,32 +513,32 @@ async def edit_driver_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_parts = update.callback_query.data.split("_")
     field = data_parts[1]  # name или phone
     driver_id = int(data_parts[3])
-    
+
     context.user_data["state"] = EDITING_DRIVER
     context.user_data["edit_driver_id"] = driver_id
     context.user_data["edit_field"] = field
-    
+
     field_text = "имя" if field == "name" else "номер телефона"
-    
+
     await update.callback_query.edit_message_text(
         text=f"📝 Введите новое {field_text}:",
         reply_markup=get_back_keyboard()
     )
-    
+
     await update.callback_query.answer()
 
 async def handle_edit_driver_input(update, context, text):
     """Обработка ввода при редактировании водителя"""
     driver_id = context.user_data.get("edit_driver_id")
     field = context.user_data.get("edit_field")
-    
+
     if not driver_id or not field:
         return
-    
+
     db = SessionLocal()
     try:
         driver = db.query(User).filter(User.id == driver_id).first()
-        
+
         if not driver:
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -551,7 +552,7 @@ async def handle_edit_driver_input(update, context, text):
         old_value = getattr(driver, field)
         setattr(driver, field, text)
         db.commit()
-        
+
         field_text = "имя" if field == "name" else "номер телефона"
         text_msg = f"✅ {field_text.capitalize()} водителя изменено!\n\n"
         text_msg += f"Было: {old_value}\n"
@@ -585,7 +586,7 @@ async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     db = SessionLocal()
     try:
         logists = db.query(User).filter(User.role == "logist").all()
-        
+
         if not logists:
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -597,7 +598,7 @@ async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         action_text = "редактирования" if action_type.startswith("edit") else "удаления"
         text = f"📋 Выберите логиста для {action_text}:"
-        
+
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -613,11 +614,11 @@ async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 async def edit_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Редактировать логиста"""
     logist_id = int(update.callback_query.data.split("_")[2])
-    
+
     db = SessionLocal()
     try:
         logist = db.query(User).filter(User.id == logist_id).first()
-        
+
         if not logist:
             await update.callback_query.answer("❌ Логист не найден!")
             return
@@ -639,11 +640,11 @@ async def edit_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Удалить логиста"""
     logist_id = int(update.callback_query.data.split("_")[2])
-    
+
     db = SessionLocal()
     try:
         logist = db.query(User).filter(User.id == logist_id).first()
-        
+
         if not logist:
             await update.callback_query.answer("❌ Логист не найден!")
             return
@@ -672,32 +673,32 @@ async def edit_logist_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data_parts = update.callback_query.data.split("_")
     field = data_parts[1]  # name или phone
     logist_id = int(data_parts[3])
-    
+
     context.user_data["state"] = EDITING_LOGIST
     context.user_data["edit_logist_id"] = logist_id
     context.user_data["edit_field"] = field
-    
+
     field_text = "имя" if field == "name" else "номер телефона"
-    
+
     await update.callback_query.edit_message_text(
         text=f"📝 Введите новое {field_text}:",
         reply_markup=get_back_keyboard()
     )
-    
+
     await update.callback_query.answer()
 
 async def handle_edit_logist_input(update, context, text):
     """Обработка ввода при редактировании логиста"""
     logist_id = context.user_data.get("edit_logist_id")
     field = context.user_data.get("edit_field")
-    
+
     if not logist_id or not field:
         return
-    
+
     db = SessionLocal()
     try:
         logist = db.query(User).filter(User.id == logist_id).first()
-        
+
         if not logist:
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -711,7 +712,7 @@ async def handle_edit_logist_input(update, context, text):
         old_value = getattr(logist, field)
         setattr(logist, field, text)
         db.commit()
-        
+
         field_text = "имя" if field == "name" else "номер телефона"
         text_msg = f"✅ {field_text.capitalize()} логиста изменено!\n\n"
         text_msg += f"Было: {old_value}\n"
@@ -735,3 +736,410 @@ async def handle_edit_logist_input(update, context, text):
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
+
+# === УПРАВЛЕНИЕ СМЕНАМИ ===
+
+async def show_active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать активные смены"""
+    await delete_previous_messages(update, context)
+
+    db = SessionLocal()
+    try:
+        active_shifts = db.query(Shift).filter(Shift.is_active == True).all()
+
+        if not active_shifts:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Активных смен не найдено.",
+                reply_markup=get_admin_inline_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+            return
+
+        text = "🚛 Активные смены:\n\n"
+
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = []
+
+        for shift in active_shifts:
+            driver = shift.driver
+            car = shift.car
+
+            car_info = car.number
+            if car.brand:
+                car_info += f" ({car.brand}"
+                if car.model:
+                    car_info += f" {car.model}"
+                car_info += ")"
+
+            start_time = shift.start_time.strftime('%H:%M')
+            text += f"👤 {driver.name}\n"
+            text += f"🚗 {car_info}\n"
+            text += f"⏰ Начало: {start_time}\n"
+            text += f"───────────────\n"
+
+            # Кнопки для управления сменой
+            keyboard.append([
+                InlineKeyboardButton(f"✅ Завершить смену {driver.name}", callback_data=f"end_shift_{shift.id}")
+            ])
+            keyboard.append([
+                InlineKeyboardButton(f"❌ Отменить смену {driver.name}", callback_data=f"cancel_shift_{shift.id}")
+            ])
+
+        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=reply_markup
+        )
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    if update.callback_query:
+        await update.callback_query.answer()
+
+async def end_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Завершить смену"""
+    shift_id = int(update.callback_query.data.split("_")[2])
+
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+
+        if not shift:
+            await update.callback_query.answer("❌ Смена не найдена!")
+            return
+
+        if not shift.is_active:
+            await update.callback_query.answer("❌ Смена уже завершена!")
+            return
+
+        # Завершаем смену
+        shift.end_time = datetime.now()
+        shift.is_active = False
+        db.commit()
+
+        driver = shift.driver
+        car = shift.car
+
+        car_info = car.number
+        if car.brand:
+            car_info += f" ({car.brand}"
+            if car.model:
+                car_info += f" {car.model}"
+            car_info += ")"
+
+        # Уведомляем водителя о завершении смены
+        try:
+            if driver.telegram_id:
+                driver_text = f"✅ Ваша смена завершена администратором\n\n"
+                driver_text += f"🚗 Автомобиль: {car_info}\n"
+                driver_text += f"⏰ Время начала: {shift.start_time.strftime('%H:%M')}\n"
+                driver_text += f"⏰ Время окончания: {shift.end_time.strftime('%H:%M')}\n"
+                driver_text += f"⏱️ Продолжительность: {(shift.end_time - shift.start_time).total_seconds() / 3600:.1f} ч"
+
+                await context.bot.send_message(
+                    chat_id=driver.telegram_id,
+                    text=driver_text
+                )
+        except:
+            pass
+
+        text = f"✅ Смена водителя {driver.name} завершена!\n\n"
+        text += f"🚗 Автомобиль: {car_info}\n"
+        text += f"⏰ Время начала: {shift.start_time.strftime('%H:%M')}\n"
+        text += f"⏰ Время окончания: {shift.end_time.strftime('%H:%M')}\n"
+        text += f"⏱️ Продолжительность: {(shift.end_time - shift.start_time).total_seconds() / 3600:.1f} ч"
+
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts"),
+                InlineKeyboardButton("🏠 Главная", callback_data="admin_panel")
+            ]])
+        )
+
+    except Exception as e:
+        await update.callback_query.edit_message_text(
+            text=f"❌ Ошибка завершения смены: {str(e)}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts")
+            ]])
+        )
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def cancel_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отменить смену"""
+    shift_id = int(update.callback_query.data.split("_")[2])
+
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+
+        if not shift:
+            await update.callback_query.answer("❌ Смена не найдена!")
+            return
+
+        if not shift.is_active:
+            await update.callback_query.answer("❌ Смена уже завершена!")
+            return
+
+        driver = shift.driver
+        car = shift.car
+
+        car_info = car.number
+        if car.brand:
+            car_info += f" ({car.brand}"
+            if car.model:
+                car_info += f" {car.model}"
+            car_info += ")"
+
+        # Уведомляем водителя об отмене смены
+        try:
+            if driver.telegram_id:
+                driver_text = f"❌ Ваша смена отменена администратором\n\n"
+                driver_text += f"🚗 Автомобиль: {car_info}\n"
+                driver_text += f"⏰ Время начала: {shift.start_time.strftime('%H:%M')}\n"
+                driver_text += f"⏰ Время отмены: {datetime.now().strftime('%H:%M')}"
+
+                await context.bot.send_message(
+                    chat_id=driver.telegram_id,
+                    text=driver_text
+                )
+        except:
+            pass
+
+        # Удаляем смену из базы данных
+        db.delete(shift)
+        db.commit()
+
+        text = f"❌ Смена водителя {driver.name} отменена!\n\n"
+        text += f"🚗 Автомобиль: {car_info}\n"
+        text += f"⏰ Время начала: {shift.start_time.strftime('%H:%M')}\n"
+        text += f"⏰ Время отмены: {datetime.now().strftime('%H:%M')}"
+
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts"),
+                InlineKeyboardButton("🏠 Главная", callback_data="admin_panel")
+            ]])
+        )
+
+    except Exception as e:
+        await update.callback_query.edit_message_text(
+            text=f"❌ Ошибка отмены смены: {str(e)}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts")
+            ]])
+        )
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+# === ИСТОРИЯ СМЕН И ОТЧЕТЫ ===
+
+async def shifts_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """История смен"""
+    from keyboards import get_admin_shifts_keyboard
+
+    db = SessionLocal()
+    try:
+        # Получаем последние 10 завершенных смен
+        completed_shifts = db.query(Shift).filter(
+            Shift.is_active == False,
+            Shift.end_time != None
+        ).order_by(Shift.end_time.desc()).limit(10).all()
+
+        if not completed_shifts:
+            text = "📋 История смен пуста"
+        else:
+            text = "📋 История смен (последние 10):\n\n"
+
+            for shift in completed_shifts:
+                driver = shift.driver
+                car = shift.car
+
+                car_info = car.number
+                if car.brand:
+                    car_info += f" ({car.brand}"
+                    if car.model:
+                        car_info += f" {car.model}"
+                    car_info += ")"
+
+                start_time = shift.start_time.strftime('%d.%m %H:%M')
+                end_time = shift.end_time.strftime('%d.%m %H:%M')
+                duration = (shift.end_time - shift.start_time).total_seconds() / 3600
+
+                text += f"👤 {driver.name}\n"
+                text += f"🚗 {car_info}\n"
+                text += f"📅 {start_time} - {end_time}\n"
+                text += f"⏱️ {duration:.1f} ч\n"
+                text += f"───────────────\n"
+
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_shifts_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_shifts_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def shifts_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отчет по сменам"""
+    from keyboards import get_admin_reports_keyboard
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        # Статистика за последние 7 дней
+        week_ago = datetime.now() - timedelta(days=7)
+
+        week_shifts = db.query(Shift).filter(
+            Shift.start_time >= week_ago
+        ).count()
+
+        completed_week = db.query(Shift).filter(
+            Shift.start_time >= week_ago,
+            Shift.is_active == False,
+            Shift.end_time != None
+        ).all()
+
+        total_hours = 0
+        if completed_week:
+            for shift in completed_week:
+                duration = (shift.end_time - shift.start_time).total_seconds() / 3600
+                total_hours += duration
+
+        avg_hours = total_hours / len(completed_week) if completed_week else 0
+
+        text = "📊 Отчет по сменам (7 дней)\n\n"
+        text += f"🚛 Всего смен: {week_shifts}\n"
+        text += f"✅ Завершено: {len(completed_week)}\n"
+        text += f"⏱️ Общее время: {total_hours:.1f} ч\n"
+        text += f"📈 Среднее время: {avg_hours:.1f} ч"
+
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def cars_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отчет по машинам"""
+    from keyboards import get_admin_reports_keyboard
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        cars = db.query(Car).all()
+        week_ago = datetime.now() - timedelta(days=7)
+
+        text = "📊 Отчет по машинам (7 дней)\n\n"
+
+        for car in cars:
+            car_info = car.number
+            if car.brand:
+                car_info += f" ({car.brand}"
+                if car.model:
+                    car_info += f" {car.model}"
+                car_info += ")"
+
+            car_shifts = db.query(Shift).filter(
+                Shift.car_id == car.id,
+                Shift.start_time >= week_ago
+            ).count()
+
+            text += f"🚗 {car_info}: {car_shifts} смен\n"
+
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def employees_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отчет по сотрудникам"""
+    from keyboards import get_admin_reports_keyboard
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        drivers = db.query(User).filter(User.role == "driver").all()
+        week_ago = datetime.now() - timedelta(days=7)
+
+        text = "📊 Отчет по водителям (7 дней)\n\n"
+
+        for driver in drivers:
+            driver_shifts = db.query(Shift).filter(
+                Shift.driver_id == driver.id,
+                Shift.start_time >= week_ago
+            ).count()
+
+            completed_shifts = db.query(Shift).filter(
+                Shift.driver_id == driver.id,
+                Shift.start_time >= week_ago,
+                Shift.is_active == False,
+                Shift.end_time != None
+            ).all()
+
+            total_hours = 0
+            if completed_shifts:
+                for shift in completed_shifts:
+                    duration = (shift.end_time - shift.start_time).total_seconds() / 3600
+                    total_hours += duration
+
+            text += f"👤 {driver.name}\n"
+            text += f"   🚛 Смен: {driver_shifts}\n"
+            text += f"   ⏱️ Часов: {total_hours:.1f}\n"
+
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_reports_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
