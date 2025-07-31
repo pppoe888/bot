@@ -1,51 +1,23 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import Update
 from telegram.ext import ContextTypes
-from database import SessionLocal, User, Car, Shift
-from config import ADMIN_ID
+from database import SessionLocal, User, Car
 from keyboards import get_admin_inline_keyboard, get_manage_drivers_keyboard, get_manage_cars_keyboard, get_manage_logists_keyboard
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Админ панель"""
-    # Проверка что пользователь - настоящий админ
-    if update.effective_user.id != ADMIN_ID:
-        if update.callback_query:
-            await update.callback_query.answer("❌ У вас нет прав администратора.")
-        else:
-            await update.message.reply_text("❌ У вас нет прав администратора.")
-        return
-
-    try:
-        # Удаляем предыдущие сообщения
-        if context.user_data.get("last_message_id"):
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=context.user_data["last_message_id"]
-            )
-
-        if update.message:
-            await update.message.delete()
-    except:
-        pass
+    await update.callback_query.answer()
 
     text = "🛠️ Админ панель\n\nВыберите действие:"
     keyboard = get_admin_inline_keyboard()
 
-    if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text(
-                text=text,
-                reply_markup=keyboard
-            )
-        except:
-            message = await update.callback_query.message.reply_text(
-                text=text,
-                reply_markup=keyboard
-            )
-            context.user_data["last_message_id"] = message.message_id
-        await update.callback_query.answer()
-    else:
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+    try:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=keyboard
+        )
+    except:
+        message = await update.callback_query.message.reply_text(
             text=text,
             reply_markup=keyboard
         )
@@ -55,7 +27,7 @@ async def manage_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление водителями"""
     await update.callback_query.answer()
 
-    text = "👥 Управление водителями\n\nВыберите действие:"
+    text = "🚛 Управление водителями\n\nВыберите действие:"
     keyboard = get_manage_drivers_keyboard()
 
     try:
@@ -109,40 +81,45 @@ async def manage_logists(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["last_message_id"] = message.message_id
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Статистика системы"""
+    """Статистика админа"""
     await update.callback_query.answer()
 
     db = SessionLocal()
     try:
+        # Получаем статистику
         drivers_count = db.query(User).filter(User.role == "driver").count()
         logists_count = db.query(User).filter(User.role == "logist").count()
         cars_count = db.query(Car).count()
-        active_shifts = db.query(Shift).filter(Shift.end_time.is_(None)).count()
 
-        text = f"📊 Статистика системы\n\n"
+        text = f"📊 Статистика системы:\n\n"
         text += f"👥 Водителей: {drivers_count}\n"
         text += f"📋 Логистов: {logists_count}\n"
-        text += f"🚗 Машин: {cars_count}\n"
-        text += f"🚛 Активных смен: {active_shifts}\n"
-
-        keyboard = [
-            [InlineKeyboardButton("⬅️ Назад", callback_data="admin_panel")]
-        ]
+        text += f"🚗 Машин: {cars_count}"
 
         try:
             await update.callback_query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                text=text,
+                reply_markup=get_admin_inline_keyboard()
             )
-        except Exception as e:
-            if "Message is not modified" in str(e):
-                await update.callback_query.answer()
-            else:
-                await update.callback_query.message.reply_text(
-                    text,
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_inline_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+
     except Exception as e:
-        await update.callback_query.message.reply_text(f"❌ Ошибка получения статистики: {e}")
+        text = f"❌ Ошибка получения статистики: {str(e)}"
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_inline_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_inline_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()

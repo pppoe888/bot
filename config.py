@@ -2,14 +2,10 @@
 import os
 
 # Токен от @BotFather
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не установлен в переменных окружения")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
 
 # ID администратора (ваш Telegram ID)
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-if ADMIN_ID == 0:
-    raise ValueError("ADMIN_ID не установлен в переменных окружения")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
 
 # URL базы данных
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bot.db")
+DATABASE_URL = "sqlite:///bot.db"

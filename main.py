@@ -1,7 +1,8 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from config import BOT_TOKEN
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+from config import BOT_TOKEN, ADMIN_ID
 from handlers.auth import start, handle_contact, create_admin, handle_role_selection
-from keyboards import get_role_selection, get_admin_menu
+from keyboards import get_role_selection, get_admin_menu, get_driver_menu, get_logist_menu
 from handlers.driver import start_shift, select_car
 from handlers.delivery import delivery_list
 from handlers.admin import admin_panel, manage_drivers, manage_cars, manage_logists, admin_stats
@@ -9,7 +10,7 @@ from handlers.admin_actions import handle_admin_text, handle_add_driver, handle_
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
 from handlers.parking import parking_check
 from handlers.report import report
-from states import WAITING_ROLE_SELECTION
+import states
 from database import SessionLocal, User, Car
 
 async def delete_previous_messages(update, context):
@@ -27,38 +28,106 @@ async def delete_previous_messages(update, context):
 
 async def handle_back_button(update, context):
     """Обработчик кнопки Назад"""
-    from keyboards import get_driver_menu, get_logist_menu
+    user_id = update.effective_user.id
 
-    # Очищаем состояние пользователя
+    # Очищаем состояние
     context.user_data.clear()
 
-    # Получаем роль пользователя
+    # Если это админ
+    if user_id == ADMIN_ID:
+        keyboard = get_admin_menu()
+        text = "👑 Админ панель"
+        message = await update.message.reply_text(text, reply_markup=keyboard)
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    # Проверяем роль пользователя
     db = SessionLocal()
-    user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id).first()
 
-    if user:
-        if user.role == "admin":
-            keyboard = get_admin_menu()
-            text = "🛠️ Админ панель"
-        elif user.role == "driver":
-            keyboard = get_driver_menu()
-            text = "🚛 Меню водителя"
-        elif user.role == "logist":
-            keyboard = get_logist_menu()
-            text = "📋 Меню логиста"
+        if user:
+            if user.role == "driver":
+                keyboard = get_driver_menu()
+                text = f"🚛 Меню водителя"
+            elif user.role == "logist":
+                keyboard = get_logist_menu()
+                text = f"📋 Меню логиста"
+            else:
+                keyboard = get_role_selection()
+                text = "Выберите вашу роль:"
+
+            message = await update.message.reply_text(text, reply_markup=keyboard)
+            context.user_data["last_message_id"] = message.message_id
         else:
-            keyboard = get_role_selection()
-            text = "Выберите вашу роль:"
-    else:
-        keyboard = get_role_selection()
-        text = "Выберите вашу роль:"
+            await start(update, context)
+    finally:
+        db.close()
 
-    db.close()
+async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка всех текстовых сообщений"""
+    text = update.message.text
 
+    # Проверяем состояние пользователя для админских функций
+    current_state = context.user_data.get("state")
+    if current_state == "writing_message":
+        await send_message_to_chat(update, context, text)
+        return
+    elif current_state in [states.ADDING_DRIVER, states.ADDING_LOGIST, states.ADDING_CAR]:
+        await handle_admin_text(update, context)
+        return
+
+    # Обработка выбора роли
+    if text in ["👨‍💼 Администратор", "📋 Логист", "🚛 Водитель"]:
+        await handle_role_selection(update, context)
+        return
+
+    # Обработка кнопки "Назад"
+    if text == "⬅️ Назад":
+        await handle_back_button(update, context)
+        return
+
+    # Обработка меню водителя
+    if text == "🚛 Начать смену":
+        await start_shift(update, context)
+        return
+    elif text == "📦 Список поставок":
+        await delivery_list(update, context)
+        return
+    elif text == "💬 Чат":
+        await chat(update, context)
+        return
+    elif text == "🅿️ Парковка":
+        await parking_check(update, context)
+        return
+    elif text == "📊 Отчет":
+        await report(update, context)
+        return
+
+    # Обработка меню логиста
+    if text == "📦 Список доставки":
+        await delivery_list(update, context)
+        return
+    elif text == "💬 Чат водителей":
+        await chat(update, context)
+        return
+    elif text == "📊 Отчёт смен":
+        await report(update, context)
+        return
+
+    # Обработка чата
+    if text == "✍️ Написать сообщение":
+        await write_message(update, context)
+        return
+    elif text == "🔄 Обновить":
+        await refresh_chat(update, context)
+        return
+
+    # Если сообщение не распознано
+    await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=text,
-        reply_markup=keyboard
+        text="❌ Команда не распознана. Используйте кнопки меню."
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -72,60 +141,40 @@ async def block_media(update, context):
     context.user_data["last_message_id"] = message.message_id
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    """Главная функция бота"""
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    # Обработчики команд (в первую очередь)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("create_admin", create_admin))
+    # Обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("create_admin", create_admin))
 
     # Обработчик контактов
-    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
 
     # Обработчики callback queries (inline кнопки)
-    app.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
-    app.add_handler(CallbackQueryHandler(manage_drivers, pattern="^manage_drivers$"))
-    app.add_handler(CallbackQueryHandler(manage_cars, pattern="^manage_cars$"))
-    app.add_handler(CallbackQueryHandler(manage_logists, pattern="^manage_logists$"))
-    app.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
-    app.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
-    app.add_handler(CallbackQueryHandler(handle_add_logist, pattern="^add_logist$"))
-    app.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
-    app.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
-    app.add_handler(CallbackQueryHandler(handle_back_button, pattern="^back_to_menu$"))
+    application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
+    application.add_handler(CallbackQueryHandler(manage_drivers, pattern="^manage_drivers$"))
+    application.add_handler(CallbackQueryHandler(manage_cars, pattern="^manage_cars$"))
+    application.add_handler(CallbackQueryHandler(manage_logists, pattern="^manage_logists$"))
+    application.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
+    application.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
+    application.add_handler(CallbackQueryHandler(handle_add_logist, pattern="^add_logist$"))
+    application.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
+    application.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
+    application.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
 
-    # Обработчик выбора машины
-    app.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
+    # Обработчик всех текстовых сообщений
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 
-    # Обработчик для выбора роли
-    app.add_handler(MessageHandler(
-        filters.TEXT & filters.Regex("^(👨‍💼 Администратор|📋 Логист|🚛 Водитель)$"), 
-        handle_role_selection
+    # Блокировка медиа файлов
+    application.add_handler(MessageHandler(
+        filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.DOCUMENT | 
+        filters.VOICE | filters.VIDEO_NOTE | filters.STICKER | filters.ANIMATION,
+        block_media
     ))
 
-    # Обработчики текстовых сообщений с кнопками меню (должны быть перед админскими действиями)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🛠️ Админка"), admin_panel))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🚛 Начать смену"), start_shift))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📦 Список поставок"), delivery_list))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("💬 Чат"), chat))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🅿️ Парковка"), parking_check))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📊 Отчет"), report))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("⬅️ Назад"), handle_back_button))
-
-    # Обработчик для админских действий (должен быть после кнопок меню)
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & ~filters.Regex("^(🛠️|🚛|📦|💬|🅿️|📊|⬅️|✅|❌|✍️|🔄|👨‍💼|📋)") & ~filters.Regex("^(Водитель|Логист|Администратор)"), 
-        handle_admin_text
-    ))
-
-    # Обработчики чата
-    app.add_handler(CallbackQueryHandler(write_message, pattern="^write_message$"))
-    app.add_handler(CallbackQueryHandler(send_message_to_chat, pattern="^send_to_chat$"))
-    app.add_handler(CallbackQueryHandler(refresh_chat, pattern="^refresh_chat$"))
-
-    # Блокировка медиа
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.Document.ALL | filters.Sticker.ALL, block_media))
-
-    app.run_polling()
+    print("🤖 Бот запущен!")
+    application.run_polling()
 
 if __name__ == "__main__":
     main()

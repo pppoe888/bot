@@ -1,8 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, ChatMessage
-from keyboards import get_chat_menu, get_back_keyboard
-from states import WRITING_MESSAGE
+from keyboards import get_chat_keyboard
 from datetime import datetime
 
 async def delete_previous_messages(update, context):
@@ -19,69 +18,54 @@ async def delete_previous_messages(update, context):
         pass
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главная функция чата"""
+    """Основная функция чата"""
     await delete_previous_messages(update, context)
 
-    # Проверяем авторизацию
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-
-        if not user:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="❌ Вы не авторизованы. Используйте /start для авторизации."
-            )
-            context.user_data["last_message_id"] = message.message_id
-            return
-
-        # Получаем последние 10 сообщений
-        messages = db.query(ChatMessage).order_by(ChatMessage.timestamp.desc()).limit(10).all()
-        messages.reverse()  # Показываем в правильном порядке
+        # Получаем последние сообщения из чата
+        messages = db.query(ChatMessage).join(User).order_by(ChatMessage.timestamp.desc()).limit(10).all()
 
         if not messages:
-            chat_text = "💬 Чат водителей\n\n📝 Сообщений пока нет."
+            text = "💬 Чат пуст\n\nНапишите первое сообщение!"
         else:
-            chat_text = "💬 Чат водителей\n\n"
-            for msg in messages:
+            text = "💬 Последние сообщения:\n\n"
+            for msg in reversed(messages):
                 time_str = msg.timestamp.strftime("%H:%M")
-                role_emoji = "👑" if msg.user.role == "admin" else "🚛"
-                chat_text += f"{role_emoji} {msg.user.name} ({time_str}):\n{msg.message}\n\n"
+                text += f"[{time_str}] {msg.user.name}: {msg.message}\n"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=chat_text,
-            reply_markup=get_chat_menu()
+            text=text,
+            reply_markup=get_chat_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
     except Exception as e:
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"❌ Ошибка: {e}"
+            text=f"❌ Ошибка загрузки чата: {str(e)}",
+            reply_markup=get_chat_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
 
 async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переходит в режим написания сообщения"""
+    """Режим написания сообщения"""
     await delete_previous_messages(update, context)
+
+    context.user_data["state"] = "writing_message"
 
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="✍️ Напишите ваше сообщение:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_chat_keyboard()
     )
-    context.user_data["state"] = WRITING_MESSAGE
     context.user_data["last_message_id"] = message.message_id
 
-async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет сообщение в чат"""
-    if context.user_data.get("state") != WRITING_MESSAGE:
-        return
-
-    # Проверяем авторизацию
+async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE, message_text: str):
+    """Отправка сообщения в чат"""
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
@@ -90,7 +74,8 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
             await delete_previous_messages(update, context)
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="❌ Вы не авторизованы. Используйте /start для авторизации."
+                text="❌ Пользователь не найден!",
+                reply_markup=get_chat_keyboard()
             )
             context.user_data["last_message_id"] = message.message_id
             return
@@ -98,7 +83,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
         # Сохраняем сообщение в базу
         new_message = ChatMessage(
             user_id=user.id,
-            message=update.message.text,
+            message=message_text,
             timestamp=datetime.now()
         )
 
@@ -110,21 +95,24 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="✅ Сообщение отправлено в чат!",
-            reply_markup=get_chat_menu()
+            reply_markup=get_chat_keyboard()
         )
-        context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
+
+        # Очищаем состояние
+        context.user_data.pop("state", None)
 
     except Exception as e:
         await delete_previous_messages(update, context)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"❌ Ошибка: {e}"
+            text=f"❌ Ошибка отправки сообщения: {str(e)}",
+            reply_markup=get_chat_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
 
 async def refresh_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновить чат"""
+    """Обновление чата"""
     await chat(update, context)
