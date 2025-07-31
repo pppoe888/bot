@@ -34,6 +34,6 @@ async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        "🚛 Выберите машину для начала смены:",
+        "🚗 Выберите машину для смены:",
         reply_markup=get_car_keyboard(cars)
     )

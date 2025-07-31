@@ -8,75 +8,141 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from config import ADMIN_ID
 
     db = SessionLocal()
-    user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-
-    # Если это админ и его нет в базе - создаем автоматически
-    if update.effective_user.id == ADMIN_ID and not user:
-        admin_user = User(
-            telegram_id=ADMIN_ID,
-            phone="admin",
-            name=update.effective_user.first_name or "Администратор",
-            role="admin"
-        )
-        db.add(admin_user)
-        db.commit()
-        user = admin_user
-
-    if user:
-        # Получаем данные пользователя до закрытия сессии
-        user_name = user.name
-        # Проверяем является ли пользователь настоящим админом
-        is_admin = (update.effective_user.id == ADMIN_ID)
-
+    
+    try:
+        # Сначала проверяем, является ли пользователь админом
+        if update.effective_user.id == ADMIN_ID:
+            # Проверяем, есть ли админ в базе
+            admin_user = db.query(User).filter(User.telegram_id == ADMIN_ID).first()
+            
+            if not admin_user:
+                # Создаем админа автоматически
+                admin_user = User(
+                    telegram_id=ADMIN_ID,
+                    phone="admin",
+                    name=update.effective_user.first_name or "Администратор",
+                    role="admin"
+                )
+                db.add(admin_user)
+                db.commit()
+            
+            # Удаляем предыдущие сообщения
+            try:
+                if context.user_data.get("last_message_id"):
+                    await context.bot.delete_message(
+                        chat_id=update.effective_chat.id,
+                        message_id=context.user_data["last_message_id"]
+                    )
+                await update.message.delete()
+            except:
+                pass
+                
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"Добро пожаловать, Администратор {admin_user.name}!",
+                reply_markup=get_admin_menu()
+            )
+            context.user_data.clear()
+            context.user_data["last_message_id"] = message.message_id
+            
+        else:
+            # Это не админ - проверяем авторизацию водителя
+            user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+            
+            if user and user.role == "driver":
+                # Удаляем предыдущее сообщение если возможно
+                try:
+                    await update.message.delete()
+                except:
+                    pass
+                    
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"Добро пожаловать, {user.name}!",
+                    reply_markup=get_driver_menu()
+                )
+                context.user_data["last_message_id"] = message.message_id
+                context.user_data.clear()
+            else:
+                # Удаляем предыдущее сообщение если возможно
+                try:
+                    await update.message.delete()
+                except:
+                    pass
+                    
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="Добро пожаловать! Для авторизации водителя отправьте ваш номер телефона:",
+                    reply_markup=get_phone_button()
+                )
+                context.user_data["last_message_id"] = message.message_id
+                context.user_data["state"] = WAITING_PHONE
+            
+    except Exception as e:
+        print(f"Ошибка в start: {e}")
+        await update.message.reply_text("Произошла ошибка. Попробуйте еще раз.")
+    finally:
         db.close()
-
-        await update.message.reply_text(
-            f"Добро пожаловать, {user_name}!",
-            reply_markup=get_admin_menu() if is_admin else get_driver_menu()
-        )
-        context.user_data.clear()
-    else:
-        db.close()
-        await update.message.reply_text(
-            "Отправьте номер для входа:",
-            reply_markup=get_phone_button()
-        )
-        context.user_data["state"] = WAITING_PHONE
 
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from config import ADMIN_ID
+    
+    # Админ не должен авторизовываться через номер телефона
+    if update.effective_user.id == ADMIN_ID:
+        await update.message.reply_text("❌ Администратор не может авторизоваться как водитель.")
+        return
+
     contact = update.message.contact
     phone = contact.phone_number
     user_id = update.effective_user.id
 
     db = SessionLocal()
 
-    # Ищем пользователя по номеру телефона
-    user = db.query(User).filter(User.phone == phone).first()
+    # Ищем водителя по номеру телефона
+    user = db.query(User).filter(User.phone == phone, User.role == "driver").first()
 
     if user:
-        # Пользователь найден, обновляем telegram_id
+        # Водитель найден, обновляем telegram_id
         user.telegram_id = user_id
         db.commit()
 
         # Получаем имя пользователя до закрытия сессии
         user_name = user.name
-
-        # Проверяем является ли пользователь настоящим админом
-        from config import ADMIN_ID
-        is_admin = (update.effective_user.id == ADMIN_ID)
-
         db.close()
 
-        await update.message.reply_text(
-            f"✅ Регистрация завершена! Добро пожаловать, {user_name}!",
-            reply_markup=get_admin_menu() if is_admin else get_driver_menu()
+        # Удаляем предыдущие сообщения
+        try:
+            if context.user_data.get("last_message_id"):
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=context.user_data["last_message_id"]
+                )
+            await update.message.delete()
+        except:
+            pass
+            
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"✅ Авторизация завершена! Добро пожаловать, {user_name}!",
+            reply_markup=get_driver_menu()
         )
+        context.user_data["last_message_id"] = message.message_id
         context.user_data.clear()
     else:
         db.close()
-        await update.message.reply_text(
-            "❌ Ваш номер не найден в системе. Обратитесь к администратору."
+        # Удаляем предыдущее сообщение
+        try:
+            await update.message.delete()
+        except:
+            pass
+        
+        from keyboards import get_back_keyboard
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Ваш номер не найден среди водителей. Обратитесь к администратору для добавления в систему.",
+            reply_markup=get_back_keyboard()
         )
+        context.user_data["last_message_id"] = message.message_id
 
 async def create_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from config import ADMIN_ID

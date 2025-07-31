@@ -3,3 +3,5 @@ python-telegram-bot==20.7
 sqlalchemy==2.0.23
 python-telegram-bot
 telegram
+python-telegram-bot[all]==20.7
+sqlalchemy==2.0.23
