@@ -17,3 +17,9 @@ IN_SHIFT = "in_shift"
 
 # Состояния чата
 WRITING_MESSAGE = "writing_message"
+# Состояния для обработки пользовательского ввода
+
+ADDING_DRIVER = "adding_driver"
+ADDING_LOGIST = "adding_logist"
+ADDING_CAR = "adding_car"
+WRITING_MESSAGE = "writing_message"

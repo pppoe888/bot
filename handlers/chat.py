@@ -1,3 +1,4 @@
+
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, ChatMessage
@@ -18,22 +19,22 @@ async def delete_previous_messages(update, context):
         pass
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Основная функция чата"""
+    """Показать чат"""
     await delete_previous_messages(update, context)
 
     db = SessionLocal()
     try:
-        # Получаем последние сообщения из чата
+        # Получаем последние 10 сообщений
         messages = db.query(ChatMessage).join(User).order_by(ChatMessage.timestamp.desc()).limit(10).all()
-
+        
         if not messages:
-            text = "💬 Чат пуст\n\nНапишите первое сообщение!"
+            text = "💬 Чат пуст\n\nПока что никто ничего не написал."
         else:
-            text = "💬 Последние сообщения:\n\n"
+            text = "💬 Чат водителей\n\n"
             for msg in reversed(messages):
                 time_str = msg.timestamp.strftime("%H:%M")
                 text += f"[{time_str}] {msg.user.name}: {msg.message}\n"
-
+        
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,

@@ -179,3 +179,124 @@ async def select_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text(f"❌ Ошибка начала смены: {str(e)}")
     finally:
         db.close()
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes
+from database import SessionLocal, User, Car, Shift
+from datetime import datetime
+
+async def delete_previous_messages(update, context):
+    """Удаляет предыдущие сообщения"""
+    try:
+        if context.user_data.get("last_message_id"):
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=context.user_data["last_message_id"]
+            )
+        if update.message:
+            await update.message.delete()
+    except:
+        pass
+
+async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начать смену"""
+    await delete_previous_messages(update, context)
+    
+    user_id = update.effective_user.id
+    db = SessionLocal()
+    
+    try:
+        # Проверяем, есть ли активная смена
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        active_shift = db.query(Shift).filter(
+            Shift.driver_id == user.id,
+            Shift.is_active == True
+        ).first()
+        
+        if active_shift:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="⚠️ У вас уже есть активная смена. Завершите её перед началом новой."
+            )
+            context.user_data["last_message_id"] = message.message_id
+            return
+        
+        # Показываем список доступных машин
+        cars = db.query(Car).all()
+        
+        if not cars:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Нет доступных машин для начала смены."
+            )
+            context.user_data["last_message_id"] = message.message_id
+            return
+        
+        keyboard = []
+        for car in cars:
+            car_text = f"{car.number}"
+            if car.brand:
+                car_text += f" ({car.brand}"
+                if car.model:
+                    car_text += f" {car.model}"
+                car_text += ")"
+            
+            keyboard.append([InlineKeyboardButton(
+                car_text, 
+                callback_data=f"select_car_{car.id}"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🚗 Выберите машину для начала смены:",
+            reply_markup=reply_markup
+        )
+        context.user_data["last_message_id"] = message.message_id
+        
+    finally:
+        db.close()
+
+async def select_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор машины для смены"""
+    query = update.callback_query
+    car_id = int(query.data.split("_")[2])
+    user_id = update.effective_user.id
+    
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        car = db.query(Car).filter(Car.id == car_id).first()
+        
+        if not user or not car:
+            await query.answer("❌ Ошибка выбора машины!")
+            return
+        
+        # Создаём новую смену
+        new_shift = Shift(
+            driver_id=user.id,
+            car_id=car.id,
+            start_time=datetime.now(),
+            is_active=True
+        )
+        
+        db.add(new_shift)
+        db.commit()
+        
+        car_text = f"{car.number}"
+        if car.brand:
+            car_text += f" ({car.brand}"
+            if car.model:
+                car_text += f" {car.model}"
+            car_text += ")"
+        
+        text = f"✅ Смена начата!\n\n🚗 Машина: {car_text}\n⏰ Время начала: {new_shift.start_time.strftime('%H:%M')}"
+        
+        await query.edit_message_text(text=text)
+        
+    except Exception as e:
+        await query.answer(f"❌ Ошибка: {str(e)}")
+    finally:
+        db.close()
+    
+    await query.answer()

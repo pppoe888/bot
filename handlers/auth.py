@@ -1,7 +1,7 @@
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import SessionLocal, User
-from keyboards import get_phone_request_keyboard, get_role_selection, get_driver_menu, get_logist_menu, get_admin_menu
+from keyboards import get_role_selection, get_admin_menu, get_driver_menu, get_logist_menu, get_contact_keyboard
 from config import ADMIN_ID
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10,86 +10,59 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Проверяем, является ли пользователь администратором
     if user_id == ADMIN_ID:
-        keyboard = get_admin_menu()
-        text = "👑 Добро пожаловать, администратор!\n\n🛠️ Админ панель"
+        keyboard = get_role_selection()
+        text = "👑 Добро пожаловать, администратор!\n\n👥 Выберите роль для входа:"
         message = await update.message.reply_text(text, reply_markup=keyboard)
         context.user_data["last_message_id"] = message.message_id
         return
 
-    # Проверяем, есть ли пользователь в базе
-    db = SessionLocal()
-    user = db.query(User).filter(User.telegram_id == user_id).first()
-    db.close()
-
-    if user:
-        # Пользователь уже зарегистрирован
-        if user.role == "driver":
-            keyboard = get_driver_menu()
-            text = f"🚛 Добро пожаловать, {user.name}!\n\nВы вошли как водитель."
-        elif user.role == "logist":
-            keyboard = get_logist_menu()
-            text = f"📋 Добро пожаловать, {user.name}!\n\nВы вошли как логист."
-        else:
-            keyboard = get_role_selection()
-            text = "Выберите вашу роль:"
-    else:
-        # Новый пользователь
-        keyboard = get_role_selection()
-        text = "👋 Добро пожаловать!\n\nДля начала работы выберите вашу роль:"
-
+    # Для всех остальных пользователей показываем меню выбора роли
+    keyboard = get_role_selection()
+    text = "👋 Добро пожаловать!\n\n👥 Выберите вашу роль:"
     message = await update.message.reply_text(text, reply_markup=keyboard)
     context.user_data["last_message_id"] = message.message_id
 
 async def create_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Создание администратора"""
-    if update.effective_user.id != ADMIN_ID:
+    user_id = update.effective_user.id
+
+    if user_id != ADMIN_ID:
         await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
         return
 
-    db = SessionLocal()
-    try:
-        # Проверяем, есть ли уже админ в базе
-        admin = db.query(User).filter(User.telegram_id == ADMIN_ID).first()
+    await update.message.reply_text("✅ Вы уже являетесь администратором!")
 
-        if admin:
-            await update.message.reply_text("✅ Администратор уже существует!")
-            return
+async def setup_admin_roles(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Настройка ролей администратора"""
+    user_id = update.effective_user.id
 
-        # Создаём админа
-        new_admin = User(
-            telegram_id=ADMIN_ID,
-            name="Администратор",
-            phone="admin",
-            role="admin"
-        )
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
 
-        db.add(new_admin)
-        db.commit()
+    # Получаем имя пользователя
+    user_name = update.effective_user.first_name or "Администратор"
+    if update.effective_user.last_name:
+        user_name += f" {update.effective_user.last_name}"
 
-        await update.message.reply_text("✅ Администратор успешно создан!")
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка создания администратора: {e}")
-    finally:
-        db.close()
+    # Просим номер телефона
+    message = await update.message.reply_text(
+        f"📱 Отправьте ваш номер телефона для создания записей водителя и логиста.\n\n"
+        f"Это позволит вам авторизоваться как водитель или логист через номер телефона.",
+        reply_markup=get_contact_keyboard()
+    )
+    context.user_data["setup_admin"] = True
+    context.user_data["last_message_id"] = message.message_id
 
 async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка выбора роли"""
-    role_text = update.message.text
+    query = update.callback_query
+    await query.answer()
 
-    if role_text == "👨‍💼 Администратор":
-        selected_role = "admin"
-        role_display = "администратор"
-    elif role_text == "📋 Логист":
-        selected_role = "logist"
-        role_display = "логист"
-    elif role_text == "🚛 Водитель":
-        selected_role = "driver"
-        role_display = "водитель"
-    else:
-        return
-
+    selected_role = query.data.replace("role_", "")
     context.user_data["selected_role"] = selected_role
+
+    role_display = "водитель" if selected_role == "driver" else "логист"
 
     # Удаляем предыдущие сообщения
     try:
@@ -98,30 +71,61 @@ async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 chat_id=update.effective_chat.id,
                 message_id=context.user_data["last_message_id"]
             )
-        await update.message.delete()
     except:
         pass
 
-    # Запрашиваем номер телефона
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"📱 Для авторизации как {role_display} поделитесь номером телефона:",
-        reply_markup=get_phone_request_keyboard()
+        reply_markup=get_contact_keyboard()
     )
     context.user_data["last_message_id"] = message.message_id
 
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка получения контакта для авторизации"""
-    # Проверяем, что это не администратор - администратор не должен авторизовываться через номер телефона
-    if update.effective_user.id == ADMIN_ID:
-        await update.message.reply_text("❌ Администратор не может авторизоваться через номер телефона.")
-        return
-
     contact = update.message.contact
     phone = contact.phone_number
     user_id = update.effective_user.id
-    selected_role = context.user_data.get("selected_role", "driver")
 
+    # Проверяем, это настройка администратора
+    if context.user_data.get("setup_admin") and user_id == ADMIN_ID:
+        from handlers.admin_actions import create_admin_entries
+        
+        user_name = update.effective_user.first_name or "Администратор"
+        if update.effective_user.last_name:
+            user_name += f" {update.effective_user.last_name}"
+
+        success = await create_admin_entries(phone, user_name)
+        
+        # Удаляем предыдущие сообщения
+        try:
+            if context.user_data.get("last_message_id"):
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=context.user_data["last_message_id"]
+                )
+            await update.message.delete()
+        except:
+            pass
+
+        if success:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="✅ Записи администратора созданы!\n\nТеперь вы можете авторизоваться как водитель или логист через номер телефона.",
+                reply_markup=get_role_selection()
+            )
+        else:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Ошибка создания записей администратора.",
+                reply_markup=get_role_selection()
+            )
+            
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    selected_role = context.user_data.get("selected_role", "driver")
     db = SessionLocal()
 
     # Ищем пользователя по номеру телефона и роли

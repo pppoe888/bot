@@ -1,13 +1,17 @@
-from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+
+def get_contact_keyboard():
+    """Клавиатура для запроса контакта"""
+    keyboard = [[KeyboardButton("📱 Поделиться номером", request_contact=True)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 def get_role_selection():
     """Клавиатура выбора роли"""
     keyboard = [
         ["👨‍💼 Администратор"],
-        ["📋 Логист"],
-        ["🚛 Водитель"]
+        ["📋 Логист", "🚛 Водитель"]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_phone_request_keyboard():
     """Клавиатура для запроса номера телефона"""
@@ -18,21 +22,22 @@ def get_phone_request_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 def get_admin_menu():
-    """Клавиатура админ панели (обычная)"""
+    """Меню администратора"""
     keyboard = [
-        ["👥 Управление водителями", "🚗 Управление машинами"],
-        ["📋 Управление логистами", "📊 Статистика"],
-        ["⬅️ Назад"]
+        ["👤 Управление пользователями"],
+        ["🚗 Управление машинами"],
+        ["📊 Статистика"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_admin_inline_keyboard():
-    """Инлайн клавиатура админ панели"""
+    """Inline клавиатура админа"""
     keyboard = [
-        [InlineKeyboardButton("👥 Управление водителями", callback_data="manage_drivers")],
+        [InlineKeyboardButton("👤 Управление водителями", callback_data="manage_drivers")],
         [InlineKeyboardButton("🚗 Управление машинами", callback_data="manage_cars")],
         [InlineKeyboardButton("📋 Управление логистами", callback_data="manage_logists")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")]
+        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton("✅ Подтвердить", callback_data="confirm")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -60,6 +65,14 @@ def get_back_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_chat_menu():
+    """Клавиатура для чата"""
+    keyboard = [
+        ["✍️ Написать сообщение", "🔄 Обновить"],
+        ["⬅️ Назад"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def get_chat_keyboard():
     """Клавиатура для чата"""
     keyboard = [
         ["✍️ Написать сообщение", "🔄 Обновить"],
