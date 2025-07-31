@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from config import BOT_TOKEN, ADMIN_ID
 from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles
 from keyboards import get_role_selection, get_admin_menu, get_driver_menu, get_logist_menu, get_contact_keyboard
-from handlers.driver import start_shift, select_car
+from handlers.driver import start_shift, select_car, show_route, report_problem, handle_problem_report, handle_problem_description, handle_shift_photo
 from handlers.delivery import delivery_list
 from handlers.admin import admin_panel, manage_drivers, manage_cars, manage_logists, admin_stats, admin_panel_text, manage_cars_text, admin_stats_text
 from handlers.admin_actions import handle_admin_text, handle_add_driver, handle_add_logist, handle_add_car, handle_confirm
@@ -23,7 +23,7 @@ async def delete_previous_messages(update, context):
             )
     except Exception as e:
         print(f"Ошибка при удалении сообщения: {e}")
-    
+
     try:
         if update.message:
             await update.message.delete()
@@ -77,8 +77,11 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     if current_state == "writing_message":
         await send_message_to_chat(update, context, text)
         return
-    elif current_state in [states.ADDING_DRIVER, states.ADDING_LOGIST, states.ADDING_CAR]:
+    elif current_state in [states.ADDING_DRIVER, states.ADDING_LOGIST, states.ADDING_CAR, states.EDITING_DRIVER, states.EDITING_LOGIST]:
         await handle_admin_text(update, context)
+        return
+    elif current_state == "problem_description":
+        await handle_problem_description(update, context)
         return
 
     # Обработка выбора роли
@@ -107,12 +110,12 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         # Определяем выбранную роль
         selected_role = "logist" if text == "📋 Логист" else "driver"
         context.user_data["selected_role"] = selected_role
-        
+
         role_display = "логист" if selected_role == "logist" else "водитель"
-        
+
         # Удаляем предыдущие сообщения
         await delete_previous_messages(update, context)
-        
+
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"📱 Для авторизации как {role_display} поделитесь номером телефона:",
@@ -141,6 +144,12 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     elif text == "📊 Отчет":
         await report(update, context)
+        return
+    elif text == "🗺️ Маршрут":
+        await show_route(update, context)
+        return
+    elif text == "⚠️ Сообщить о проблеме":
+        await report_problem(update, context)
         return
 
     # Обработка меню администратора
@@ -182,11 +191,22 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["last_message_id"] = message.message_id
 
 async def block_media(update, context):
-    """Блокировка медиа файлов"""
+    """Блокировка медиа файлов (кроме фото с камеры)"""
+    # Проверяем, что это не фото для смены
+    current_state = context.user_data.get("state")
+    photo_states = [
+        states.PHOTO_CAR_FRONT, states.PHOTO_CAR_BACK, 
+        states.PHOTO_CAR_LEFT, states.PHOTO_CAR_RIGHT,
+        states.PHOTO_COOLANT, states.PHOTO_OIL, states.PHOTO_INTERIOR
+    ]
+    
+    if current_state in photo_states and update.message and update.message.photo:
+        return  # Разрешаем фото для смены
+    
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="❌ Отправка медиа файлов запрещена. Используйте только текстовые сообщения."
+        text="❌ Отправка медиа файлов запрещена. Используйте только фото с камеры для начала смены или текстовые сообщения."
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -201,26 +221,53 @@ def main():
 
     # Обработчик контактов
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    
+    # Обработчик фотографий для смены
+    application.add_handler(MessageHandler(filters.PHOTO, handle_shift_photo))
 
-    # Обработчики callback queries (inline кнопки)
+    # Обработчики callback'ов
+    from handlers.admin_actions import (
+        show_drivers_list, show_logists_list, edit_driver, edit_logist, 
+        delete_driver, delete_logist, edit_driver_field, edit_logist_field
+    )
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(manage_drivers, pattern="^manage_drivers$"))
     application.add_handler(CallbackQueryHandler(manage_cars, pattern="^manage_cars$"))
     application.add_handler(CallbackQueryHandler(manage_logists, pattern="^manage_logists$"))
     application.add_handler(CallbackQueryHandler(admin_stats, pattern="^admin_stats$"))
+
     application.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
     application.add_handler(CallbackQueryHandler(handle_add_logist, pattern="^add_logist$"))
     application.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
     application.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
+
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_drivers_list(u, c, "edit_driver"), pattern="^edit_driver_list$"))
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_logists_list(u, c, "edit_logist"), pattern="^edit_logist_list$"))
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_drivers_list(u, c, "delete_driver"), pattern="^delete_driver_list$"))
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_logists_list(u, c, "delete_logist"), pattern="^delete_logist_list$"))
+
+    application.add_handler(CallbackQueryHandler(edit_driver, pattern="^edit_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_logist, pattern="^edit_logist_\\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_driver, pattern="^delete_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_logist, pattern="^delete_logist_\\d+$"))
+
+    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^edit_name_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^edit_phone_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^edit_name_logist_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^edit_phone_logist_\\d+$"))
+
     application.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
     application.add_handler(CallbackQueryHandler(handle_role_selection, pattern="^role_"))
+
+    # Обработчики для проблем водителей
+    application.add_handler(CallbackQueryHandler(handle_problem_report, pattern="^problem_"))
 
     # Обработчик всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 
-    # Блокировка медиа файлов
+    # Блокировка медиа файлов (кроме фото для смены)
     application.add_handler(MessageHandler(
-        filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.Document.ALL | 
+        filters.VIDEO | filters.AUDIO | filters.Document.ALL | 
         filters.VOICE | filters.VIDEO_NOTE | filters.Sticker.ALL | filters.ANIMATION,
         block_media
     ))

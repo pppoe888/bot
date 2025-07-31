@@ -128,16 +128,39 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     selected_role = context.user_data.get("selected_role", "driver")
     db = SessionLocal()
 
-    # Ищем пользователя по номеру телефона и роли
+    # Нормализуем номер телефона - получаем только цифры
+    phone_digits = ''.join(filter(str.isdigit, phone))
+    
+    # Ищем пользователя по точному совпадению номера телефона и роли
     user = db.query(User).filter(
         User.phone == phone, 
         User.role == selected_role
     ).first()
+    
+    # Если не найден, пробуем поиск по нормализованным номерам
+    if not user:
+        users_with_role = db.query(User).filter(User.role == selected_role).all()
+        for u in users_with_role:
+            # Получаем только цифры из номера в базе
+            u_phone_digits = ''.join(filter(str.isdigit, u.phone))
+            
+            # Сравниваем только цифры
+            if u_phone_digits == phone_digits:
+                user = u
+                break
 
     if user:
-        # Пользователь найден, обновляем telegram_id
-        user.telegram_id = user_id
-        db.commit()
+        # Пользователь найден, проверяем и обновляем telegram_id только если нужно
+        if user.telegram_id != user_id:
+            # Проверяем, нет ли уже пользователя с таким telegram_id
+            existing_user = db.query(User).filter(User.telegram_id == user_id).first()
+            if existing_user and existing_user.id != user.id:
+                # Если есть другой пользователь с таким telegram_id, очищаем его
+                existing_user.telegram_id = None
+                db.commit()
+            
+            user.telegram_id = user_id
+            db.commit()
 
         user_name = user.name
         user_role = user.role
@@ -188,9 +211,26 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+        # Показываем отладочную информацию для диагностики
+        role_display = "водитель" if selected_role == "driver" else "логист"
+        debug_users = db.query(User).filter(User.role == selected_role).all()
+        
+        debug_text = f"❌ Пользователь с номером {phone} не найден в роли '{role_display}'.\n\n"
+        
+        if debug_users:
+            debug_text += f"📋 Найдено {len(debug_users)} пользователей с ролью '{role_display}':\n"
+            for debug_user in debug_users[:5]:  # Показываем только первых 5
+                debug_text += f"• {debug_user.name} ({debug_user.phone})\n"
+            if len(debug_users) > 5:
+                debug_text += f"... и еще {len(debug_users) - 5} пользователей\n"
+        else:
+            debug_text += f"📋 Пользователи с ролью '{role_display}' не найдены в системе.\n"
+        
+        debug_text += f"\n💡 Обратитесь к администратору для добавления в систему или проверки номера телефона."
+
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"❌ Пользователь с таким номером телефона не найден в роли '{selected_role}'.\n\nОбратитесь к администратору для добавления в систему.",
+            text=debug_text,
             reply_markup=get_role_selection()
         )
         context.user_data.clear()
