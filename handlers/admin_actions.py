@@ -1,11 +1,129 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift
-from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard, get_manage_cars_keyboard, get_admin_reports_keyboard, get_admin_shifts_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_car_list_keyboard, get_edit_car_keyboard, get_admin_cars_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_cancel_keyboard
+from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard, get_manage_cars_keyboard, get_admin_reports_keyboard, get_admin_shifts_keyboard, get_car_list_keyboard, get_edit_car_keyboard, get_admin_cars_keyboard, get_cancel_keyboard
 import states
 from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR, EDITING_DRIVER, EDITING_LOGIST
 from config import ADMIN_ID
 from datetime import datetime
+
+# === УПРАВЛЕНИЕ СОТРУДНИКАМИ ===
+
+async def manage_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление водителями"""
+    await delete_previous_messages(update, context)
+
+    text = "Водители"
+
+    try:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_manage_drivers_keyboard()
+        )
+    except:
+        message = await update.callback_query.message.reply_text(
+            text=text,
+            reply_markup=get_manage_drivers_keyboard()
+        )
+        context.user_data["last_message_id"] = message.message_id
+
+    await update.callback_query.answer()
+
+async def manage_logists(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление логистами"""
+    await delete_previous_messages(update, context)
+
+    text = "Логисты"
+
+    try:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_manage_logists_keyboard()
+        )
+    except:
+        message = await update.callback_query.message.reply_text(
+            text=text,
+            reply_markup=get_manage_logists_keyboard()
+        )
+        context.user_data["last_message_id"] = message.message_id
+
+    await update.callback_query.answer()
+
+async def show_employees_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать список всех сотрудников"""
+    from keyboards import get_admin_employees_keyboard
+
+    db = SessionLocal()
+    try:
+        drivers = db.query(User).filter(User.role == "driver").all()
+        logists = db.query(User).filter(User.role == "logist").all()
+
+        text = "👥 Список сотрудников\n\n"
+
+        if drivers:
+            text += "🚗 ВОДИТЕЛИ:\n"
+            for i, driver in enumerate(drivers, 1):
+                text += f"{i}. {driver.name} - {driver.phone}\n"
+            text += "\n"
+        else:
+            text += "🚗 ВОДИТЕЛИ: Нет водителей\n\n"
+
+        if logists:
+            text += "📋 ЛОГИСТЫ:\n"
+            for i, logist in enumerate(logists, 1):
+                text += f"{i}. {logist.name} - {logist.phone}\n"
+        else:
+            text += "📋 ЛОГИСТЫ: Нет логистов\n"
+
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=get_admin_employees_keyboard()
+            )
+        except:
+            message = await update.callback_query.message.reply_text(
+                text=text,
+                reply_markup=get_admin_employees_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, action_type: str):
+    """Показать список логистов"""
+    await delete_previous_messages(update, context)
+
+    db = SessionLocal()
+    try:
+        logists = db.query(User).filter(User.role == "logist").all()
+
+        if not logists:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Логисты не найдены!",
+                reply_markup=get_manage_logists_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+            return
+
+        action_text = "редактирования" if action_type.startswith("edit") else "удаления"
+        text = f"👤 Выберите логиста для {action_text}:"
+
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=get_user_list_keyboard(logists, action_type)
+        )
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    if update.callback_query:
+        await update.callback_query.answer()
+
 
 async def delete_previous_messages(update, context):
     """Удаляет предыдущие сообщения"""
@@ -77,6 +195,9 @@ async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_driver_input(update, context, text):
     """Обработка ввода данных водителя"""
+    # Удаляем сообщение пользователя после ввода
+    await delete_previous_messages(update, context)
+    
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -135,6 +256,9 @@ async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_logist_input(update, context, text):
     """Обработка ввода данных логиста"""
+    # Удаляем сообщение пользователя после ввода
+    await delete_previous_messages(update, context)
+    
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -193,6 +317,9 @@ async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_car_input(update, context, text):
     """Обработка ввода данных машины"""
+    # Удаляем сообщение пользователя после ввода
+    await delete_previous_messages(update, context)
+    
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -778,6 +905,9 @@ async def edit_logist_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_edit_logist_input(update, context, text):
     """Обработка ввода при редактировании логиста"""
+    # Удаляем сообщение пользователя после ввода
+    await delete_previous_messages(update, context)
+    
     # Проверяем на отмену
     if text in ["❌ Отменить", "⬅️ Назад"]:
         message = await context.bot.send_message(

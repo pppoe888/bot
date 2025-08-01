@@ -96,33 +96,47 @@ def get_admin_reports_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_back_keyboard():
-    """Клавиатура с кнопкой назад"""
-    keyboard = [["Назад"]]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    """Inline клавиатура с кнопкой назад"""
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_cancel_keyboard():
-    """Клавиатура с кнопкой отмены"""
+    """Inline клавиатура с кнопкой отмены"""
     keyboard = [
-        ["Отменить"],
-        ["Назад"]
+        [InlineKeyboardButton("Отменить", callback_data="cancel_action")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
 def get_chat_menu():
-    """Клавиатура для чата"""
+    """Inline клавиатура для чата"""
     keyboard = [
-        ["Написать сообщение", "Обновить"],
-        ["Назад"]
+        [InlineKeyboardButton("Написать сообщение", callback_data="write_message")],
+        [InlineKeyboardButton("Обновить", callback_data="refresh_chat")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
 def get_chat_keyboard():
-    """Клавиатура для чата"""
+    """Inline клавиатура для чата"""
     keyboard = [
-        ["Написать сообщение", "Обновить"],
-        ["Назад"]
+        [InlineKeyboardButton("Написать сообщение", callback_data="write_message")],
+        [InlineKeyboardButton("Обновить", callback_data="refresh_chat")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_employees_keyboard():
+    """Клавиатура раздела сотрудники"""
+    keyboard = [
+        [InlineKeyboardButton("Водители", callback_data="manage_drivers")],
+        [InlineKeyboardButton("Логисты", callback_data="manage_logists")],
+        [InlineKeyboardButton("Список всех", callback_data="employees_list")],
+        [InlineKeyboardButton("Статистика", callback_data="employees_stats")],
+        [InlineKeyboardButton("Назад", callback_data="admin_panel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_manage_drivers_keyboard():
     """Клавиатура управления водителями"""
@@ -229,6 +243,11 @@ def get_driver_menu():
     keyboard = [
         [InlineKeyboardButton("Начать смену", callback_data="start_shift")],
         [InlineKeyboardButton("Завершить смену", callback_data="end_shift")],
+        [InlineKeyboardButton("Маршрут", callback_data="show_route")],
+        [InlineKeyboardButton("Список поставок", callback_data="delivery_list")],
+        [InlineKeyboardButton("Сообщить о проблеме", callback_data="report_problem")],
+        [InlineKeyboardButton("Парковка", callback_data="parking_check")],
+        [InlineKeyboardButton("Отчет", callback_data="report")],
         [InlineKeyboardButton("Чат", callback_data="open_chat")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -237,9 +256,9 @@ def get_logist_menu():
     """Главное меню логиста"""
     keyboard = [
         [InlineKeyboardButton("Маршруты", callback_data="show_route")],
-        [InlineKeyboardButton("Доставки", callback_data="delivery_list")],
-        [InlineKeyboardButton("Отчет смен", callback_data="shifts_report")],
-        [InlineKeyboardButton("Чат", callback_data="open_chat")]
+        [InlineKeyboardButton("Список доставки", callback_data="delivery_list")],
+        [InlineKeyboardButton("Чат водителей", callback_data="open_chat")],
+        [InlineKeyboardButton("Отчёт смен", callback_data="shifts_report")]
     ]
     return InlineKeyboardMarkup(keyboard)
 

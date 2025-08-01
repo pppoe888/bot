@@ -24,7 +24,55 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["last_message_id"] = message.message_id
         return
 
-    # Для всех остальных пользователей показываем меню выбора роли
+    # Проверяем, есть ли пользователь уже в базе
+    db = SessionLocal()
+    try:
+        # Ищем пользователя по telegram_id
+        existing_user = db.query(User).filter(User.telegram_id == user_id).first()
+        
+        if existing_user:
+            # Пользователь найден, сразу авторизуем
+            user_name = existing_user.name
+            user_role = existing_user.role
+
+            # Удаляем предыдущие сообщения если есть
+            try:
+                if context.user_data.get("last_message_id"):
+                    await context.bot.delete_message(
+                        chat_id=update.effective_chat.id,
+                        message_id=context.user_data["last_message_id"]
+                    )
+                if update.message:
+                    await update.message.delete()
+            except:
+                pass
+
+            # Отправляем приветственное сообщение с соответствующим меню
+            if user_role == "driver":
+                from keyboards import get_driver_dialog_keyboard
+                keyboard = get_driver_dialog_keyboard()
+                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как водитель.\n\nВыберите действие:"
+            elif user_role == "logist":
+                from keyboards import get_logist_dialog_keyboard
+                keyboard = get_logist_dialog_keyboard()
+                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как логист.\n\nВыберите действие:"
+            else:
+                keyboard = get_role_selection()
+                text = "Выберите вашу роль:"
+
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                reply_markup=keyboard
+            )
+            context.user_data.clear()
+            context.user_data["last_message_id"] = message.message_id
+            return
+
+    finally:
+        db.close()
+
+    # Для новых пользователей показываем меню выбора роли
     keyboard = get_role_selection()
     text = "Выберите вход:"
     

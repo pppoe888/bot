@@ -7,13 +7,13 @@ from handlers.driver import start_shift, select_car, show_route, report_problem,
 from handlers.delivery import delivery_list
 from handlers.admin import admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section
 from handlers.admin_actions import (
-        handle_add_driver, handle_add_logist, handle_add_car,
-        handle_confirm, handle_admin_text,
-        show_drivers_list, edit_driver, delete_driver, edit_driver_field,
-        show_logists_list, edit_logist, delete_logist, edit_logist_field,
-        show_active_shifts, end_shift, cancel_shift,
-        show_cars_list, edit_car, delete_car, edit_car_field, manage_cars
-    )
+    handle_add_driver, handle_add_logist, handle_add_car, handle_confirm,
+    show_drivers_list, edit_driver, delete_driver, edit_driver_field,
+    show_logists_list, edit_logist, delete_logist, edit_logist_field,
+    manage_cars, show_cars_list, edit_car, delete_car, edit_car_field,
+    confirm_add_car, show_active_shifts, end_shift, cancel_shift, shifts_history,
+    manage_drivers, manage_logists, show_employees_list, handle_admin_text
+)
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
 from handlers.parking import parking_check
 from handlers.report import report
@@ -49,8 +49,16 @@ async def handle_back_button(update, context):
         from keyboards import get_admin_inline_keyboard
         keyboard = get_admin_inline_keyboard()
         text = "Администрирование"
-        message = await update.message.reply_text(text, reply_markup=keyboard)
-        context.user_data["last_message_id"] = message.message_id
+        
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+        except:
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                reply_markup=keyboard
+            )
+            context.user_data["last_message_id"] = message.message_id
         return
 
     # Проверяем роль пользователя
@@ -60,19 +68,26 @@ async def handle_back_button(update, context):
 
         if user:
             if user.role == "driver":
-                from keyboards import get_driver_dialog_keyboard
-                keyboard = get_driver_dialog_keyboard()
+                from keyboards import get_driver_menu
+                keyboard = get_driver_menu()
                 text = f"Меню водителя\n\nВыберите действие:"
             elif user.role == "logist":
-                from keyboards import get_logist_dialog_keyboard
-                keyboard = get_logist_dialog_keyboard()
+                from keyboards import get_logist_menu
+                keyboard = get_logist_menu()
                 text = f"Меню логиста\n\nВыберите действие:"
             else:
                 keyboard = get_role_selection()
                 text = "Выберите вашу роль:"
 
-            message = await update.message.reply_text(text, reply_markup=keyboard)
-            context.user_data["last_message_id"] = message.message_id
+            try:
+                await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+            except:
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text,
+                    reply_markup=keyboard
+                )
+                context.user_data["last_message_id"] = message.message_id
         else:
             await start(update, context)
     finally:
@@ -81,6 +96,9 @@ async def handle_back_button(update, context):
 async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка всех текстовых сообщений"""
     text = update.message.text
+
+    # Удаляем сообщение пользователя после ввода
+    await delete_previous_messages(update, context)
 
     # Проверяем состояние пользователя для админских функций
     current_state = context.user_data.get("state")
@@ -94,59 +112,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         await handle_problem_description(update, context)
         return
 
-    
-
-    # Обработка кнопки "Назад"
-    if text == "Назад":
-        await handle_back_button(update, context)
-        return
-
-    # Обработка меню водителя
-    if text == "Начать смену":
-        await start_shift(update, context)
-        return
-    elif text == "Список поставок":
-        await delivery_list(update, context)
-        return
-    elif text == "Чат":
-        await chat(update, context)
-        return
-    elif text == "Парковка":
-        await parking_check(update, context)
-        return
-    elif text == "Отчет":
-        await report(update, context)
-        return
-    elif text == "Маршрут":
-        await show_route(update, context)
-        return
-    elif text == "Сообщить о проблеме":
-        await report_problem(update, context)
-        return
-
-    # Удалено: старые обработчики админского меню заменены на inline кнопки
-
-    # Обработка меню логиста
-    if text == "Список доставки":
-        await delivery_list(update, context)
-        return
-    elif text == "Чат водителей":
-        await chat(update, context)
-        return
-    elif text == "Отчёт смен":
-        await report(update, context)
-        return
-
-    # Обработка чата
-    if text == "Написать сообщение":
-        await write_message(update, context)
-        return
-    elif text == "Обновить":
-        await refresh_chat(update, context)
-        return
-
     # Если сообщение не распознано
-    await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="Команда не распознана. Используйте кнопки меню."
@@ -212,6 +178,13 @@ async def handle_dialog_callbacks(update: Update, context: ContextTypes.DEFAULT_
         await delivery_list(update, context)
     elif data == "shifts_report":
         await report(update, context)
+    elif data == "parking_check":
+        await parking_check(update, context)
+    elif data == "report":
+        await report(update, context)
+    elif data == "cancel_action":
+        context.user_data.clear()
+        await handle_back_button(update, context)
 
     await query.answer()
 
@@ -243,6 +216,11 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
     application.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
     application.add_handler(CallbackQueryHandler(manage_cars, pattern="^manage_cars$"))
+
+    # Управление сотрудниками
+    application.add_handler(CallbackQueryHandler(manage_drivers, pattern="^manage_drivers$"))
+    application.add_handler(CallbackQueryHandler(manage_logists, pattern="^manage_logists$"))
+    application.add_handler(CallbackQueryHandler(show_employees_list, pattern="^employees_list$"))
 
     # Управление автомобилями
     application.add_handler(CallbackQueryHandler(lambda u, c: show_cars_list(u, c, "view"), pattern="^cars_list_view$"))
@@ -282,14 +260,14 @@ def main():
     application.add_handler(CallbackQueryHandler(show_active_shifts, pattern=r"^show_active_shifts$"))
     application.add_handler(CallbackQueryHandler(end_shift, pattern=r"^end_shift_\d+$"))
     application.add_handler(CallbackQueryHandler(cancel_shift, pattern=r"^cancel_shift_\d+$"))
-    
+
 
     # Обработчики inline кнопок диалога
-    application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report)$"))
-    
+    application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report|parking_check|report|cancel_action)$"))
+
     # Обработчик помощи с контактом
     application.add_handler(CallbackQueryHandler(handle_contact_help, pattern="^contact_help$"))
-    
+
     # Обработчик кнопки назад к ролям
     application.add_handler(CallbackQueryHandler(lambda u, c: start(u, c), pattern="^back_to_roles$"))
 
