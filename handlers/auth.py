@@ -51,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if user_role == "driver":
                 from keyboards import get_driver_dialog_keyboard
                 keyboard = get_driver_dialog_keyboard()
-                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как водитель.\n\nВыберите действие:"
+                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как водитель."
             elif user_role == "logist":
                 from keyboards import get_logist_dialog_keyboard
                 keyboard = get_logist_dialog_keyboard()
@@ -186,21 +186,18 @@ async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     role_display = "водитель" if selected_role == "driver" else "логист"
 
-    text = f"Поделитесь контактом для авторизации"
-
     from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
-    # Inline кнопки
-    inline_keyboard = [
-        [InlineKeyboardButton("📞 Поделиться контактом", callback_data="request_contact_button")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
-    ]
-    inline_reply_markup = InlineKeyboardMarkup(inline_keyboard)
+    # Inline кнопка для запроса контакта
+    keyboard = [[
+        InlineKeyboardButton("📞 Поделиться контактом", callback_data="auth_request_contact")
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        await query.edit_message_text(text=text, reply_markup=inline_reply_markup)
+        await query.edit_message_text("Нажмите кнопку для авторизации:", reply_markup=reply_markup)
     except:
-        message = await query.message.reply_text(text=text, reply_markup=inline_reply_markup)
+        message = await query.message.reply_text("Нажмите кнопку для авторизации:", reply_markup=reply_markup)
         context.user_data["last_message_id"] = message.message_id
 
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -237,11 +234,19 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Убираем клавиатуру контакта
         from telegram import ReplyKeyboardRemove
-        await context.bot.send_message(
+        remove_message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="⏳ Обрабатываем ваш контакт...",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Удаляем сообщение об обработке
+        try:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=remove_message.message_id
+            )
+        except:
+            pass
 
         if success:
             message = await context.bot.send_message(
@@ -305,11 +310,19 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Убираем клавиатуру контакта
         from telegram import ReplyKeyboardRemove
-        await context.bot.send_message(
+        remove_message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="⏳ Обрабатываем ваш контакт...",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Удаляем сообщение об обработке
+        try:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=remove_message.message_id
+            )
+        except:
+            pass
 
         if not users_by_phone:
             # Пользователь не найден - обратиться к администратору
@@ -318,7 +331,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🔄 Попробовать снова", callback_data="back_to_start")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=f"❌ Пользователь с номером {phone} не найден в системе.\n\n💡 Обратитесь к администратору для добавления в систему.",
@@ -394,11 +407,19 @@ async def authorize_by_phone_and_role(update: Update, context: ContextTypes.DEFA
 
         # Убираем клавиатуру контакта
         from telegram import ReplyKeyboardRemove
-        await context.bot.send_message(
+        remove_message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="⏳ Обрабатываем ваш контакт...",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Удаляем сообщение об обработке
+        try:
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=remove_message.message_id
+            )
+        except:
+            pass
 
         if user:
             await authorize_user(update, context, user, user_id)
@@ -436,7 +457,7 @@ async def authorize_user(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         if user_role == "driver":
             from keyboards import get_driver_dialog_keyboard
             keyboard = get_driver_dialog_keyboard()
-            text = f"Добро пожаловать, {user_name}!\n\nВы успешно авторизованы как водитель.\n\nВыберите действие:"
+            text = f"Добро пожаловать, {user_name}!"
         elif user_role == "logist":
             from keyboards import get_logist_dialog_keyboard
             keyboard = get_logist_dialog_keyboard()
@@ -464,6 +485,23 @@ def get_contact_instruction_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
+async def handle_auth_request_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик inline кнопки авторизации через контакт"""
+    query = update.callback_query
+    await query.answer()
+
+    # Убираем inline-кнопку
+    await query.edit_message_text("Отправьте свой контакт, нажав на кнопку ниже:")
+
+    # Показываем reply-клавиатуру с запросом контакта
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
+
+    kb = [[KeyboardButton("📱 Отправить контакт", request_contact=True)]]
+    reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True)
+
+    contact_message = await query.message.reply_text("👇 Нажмите кнопку для отправки контакта:", reply_markup=reply_markup)
+    context.user_data["contact_message_id"] = contact_message.message_id
+
 async def handle_request_contact_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает кнопку для отправки контакта"""
     query = update.callback_query
@@ -487,7 +525,7 @@ async def handle_request_contact_button(update: Update, context: ContextTypes.DE
     try:
         # Редактируем сообщение с простым текстом
         await query.edit_message_text(text="Поделитесь контактом для авторизации", reply_markup=inline_reply_markup)
-        
+
         # Отправляем сообщение с кнопкой контакта
         contact_message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -498,7 +536,7 @@ async def handle_request_contact_button(update: Update, context: ContextTypes.DE
     except:
         message = await query.message.reply_text(text="Поделитесь контактом для авторизации", reply_markup=inline_reply_markup)
         context.user_data["last_message_id"] = message.message_id
-        
+
         # Отправляем сообщение с кнопкой контакта
         contact_message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -564,25 +602,48 @@ async def handle_text_phone_method(update: Update, context: ContextTypes.DEFAULT
 
     context.user_data["awaiting_text_phone"] = True
 
-async def handle_contact_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает инструкции по отправке контакта"""
-    query = update.callback_query
-    await query.answer()
+async def handle_share_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик inline кнопки поделиться контактом"""
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
-    text = """📱 Как поделиться номером телефона:
+    text = ("📱 Как поделиться контактом:\n\n"
+           "🔹 Способ 1 - Через кнопку:\n"
+           "1️⃣ Нажмите 'Отправить контакт'\n"
+           "2️⃣ Подтвердите отправку\n\n"
+           "🔹 Способ 2 - Через меню:\n"
+           "1️⃣ Нажмите на скрепку 📎\n"
+           "2️⃣ Выберите 'Контакт'\n"
+           "3️⃣ Выберите свой контакт\n"
+           "4️⃣ Отправьте\n\n"
+           "🔹 Способ 3 - Ввести номер:\n"
+           "Нажмите 'Ввести номер' и введите телефон в формате +79xxxxxxxxx")
 
-1️⃣ Нажмите на кнопку 📎 (скрепка) в поле ввода сообщения
-2️⃣ Выберите "Контакт" 
-3️⃣ Выберите свой контакт из списка
-4️⃣ Нажмите "Отправить"
+    keyboard = [
+        [InlineKeyboardButton("📞 Отправить контакт", callback_data="send_contact_method")],
+        [InlineKeyboardButton("✏️ Ввести номер", callback_data="text_phone_method")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="role_driver")]
+    ]
 
-⚠️ ВАЖНО: После отправки контакта система автоматически найдет вас в базе и авторизует."""
+    from telegram import InlineKeyboardMarkup
 
     try:
-        await query.edit_message_text(text=text, reply_markup=get_contact_instruction_keyboard())
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     except:
-        message = await query.message.reply_text(text=text, reply_markup=get_contact_instruction_keyboard())
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         context.user_data["last_message_id"] = message.message_id
+
+    await update.callback_query.answer()
+
+async def handle_contact_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Помощь с отправкой контакта"""
+    await handle_share_contact(update, context)
 
 async def handle_text_phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE, phone_text: str):
     """Обработка текстового ввода номера телефона"""
@@ -604,11 +665,19 @@ async def handle_text_phone_input(update: Update, context: ContextTypes.DEFAULT_
 
     # Убираем клавиатуру контакта
     from telegram import ReplyKeyboardRemove
-    await context.bot.send_message(
+    remove_message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="⏳ Обрабатываем ваш контакт...",
         reply_markup=ReplyKeyboardRemove()
     )
+    # Удаляем сообщение об обработке
+    try:
+        await context.bot.delete_message(
+            chat_id=update.effective_chat.id,
+            message_id=remove_message.message_id
+        )
+    except:
+        pass
 
     # Нормализуем номер телефона - убираем все кроме цифр
     phone_digits = ''.join(filter(str.isdigit, phone_text))

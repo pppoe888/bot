@@ -11,7 +11,7 @@ from handlers.admin_actions import (
     show_drivers_list, edit_driver, delete_driver, edit_driver_field,
     show_logists_list, edit_logist, delete_logist, edit_logist_field,
     manage_cars, show_cars_list, edit_car, delete_car, edit_car_field,
-    confirm_add_car, show_active_shifts, end_shift, cancel_shift, shifts_history,
+    show_active_shifts, end_shift, cancel_shift, shifts_history,
     manage_drivers, manage_logists, show_employees_list, handle_admin_text
 )
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
@@ -49,7 +49,7 @@ async def handle_back_button(update, context):
         from keyboards import get_admin_inline_keyboard
         keyboard = get_admin_inline_keyboard()
         text = "Администрирование"
-        
+
         try:
             await update.callback_query.edit_message_text(text, reply_markup=keyboard)
         except:
@@ -247,10 +247,10 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_driver, pattern="^delete_driver_\\d+$"))
     application.add_handler(CallbackQueryHandler(delete_logist, pattern="^delete_logist_\\d+$"))
 
-    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^edit_name_driver_\\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^edit_phone_driver_\\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^edit_name_logist_\\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^edit_phone_logist_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^name_edit_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_driver_field, pattern="^phone_edit_driver_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^name_edit_logist_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^phone_edit_logist_\\d+$"))
 
     application.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
     application.add_handler(CallbackQueryHandler(handle_role_selection, pattern="^role_(admin|driver|logist)$"))
@@ -274,19 +274,21 @@ def main():
 
     # Обработчик помощи с контактом и методов ввода телефона
     application.add_handler(CallbackQueryHandler(handle_contact_help, pattern="^contact_help$"))
-    
+
     # Импортируем новые обработчики
-    from handlers.auth import handle_send_contact_method, handle_text_phone_method, handle_request_contact_button
+    from handlers.auth import handle_send_contact_method, handle_text_phone_method, handle_request_contact_button, handle_share_contact, handle_auth_request_contact
+    application.add_handler(CallbackQueryHandler(handle_share_contact, pattern="^share_contact$"))
+    application.add_handler(CallbackQueryHandler(handle_auth_request_contact, pattern="^auth_request_contact$"))
     application.add_handler(CallbackQueryHandler(handle_request_contact_button, pattern="^request_contact_button$"))
     application.add_handler(CallbackQueryHandler(handle_send_contact_method, pattern="^send_contact_method$"))
     application.add_handler(CallbackQueryHandler(handle_text_phone_method, pattern="^text_phone_method$"))
 
     # Обработчик кнопки назад к ролям
     application.add_handler(CallbackQueryHandler(lambda u, c: start(u, c), pattern="^back_to_roles$"))
-    
+
     # Обработчик выбора роли при множественных ролях
     application.add_handler(CallbackQueryHandler(handle_multi_role_selection, pattern="^auth_role_"))
-    
+
     # Обработчик кнопки назад с очисткой клавиатуры
     async def handle_back_to_start_with_cleanup(update, context):
         from telegram import ReplyKeyboardRemove
@@ -300,7 +302,7 @@ def main():
         except:
             pass
         await start(update, context)
-    
+
     application.add_handler(CallbackQueryHandler(handle_back_to_start_with_cleanup, pattern="^back_to_start$"))
 
     # Обработчик всех текстовых сообщений

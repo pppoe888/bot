@@ -229,12 +229,12 @@ def get_edit_car_keyboard(car_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_edit_user_keyboard(user_id, user_type):
+def get_edit_user_keyboard(user_id: int, user_type: str):
     """Клавиатура для редактирования пользователя"""
     keyboard = [
-        [InlineKeyboardButton("Имя", callback_data=f"name_edit_{user_type}_{user_id}")],
-        [InlineKeyboardButton("Телефон", callback_data=f"phone_edit_{user_type}_{user_id}")],
-        [InlineKeyboardButton("Назад", callback_data=f"manage_{user_type}s")]
+        [InlineKeyboardButton("✏️ Изменить имя", callback_data=f"name_edit_{user_type}_{user_id}")],
+        [InlineKeyboardButton("📱 Изменить телефон", callback_data=f"phone_edit_{user_type}_{user_id}")],
+        [InlineKeyboardButton("🔙 Назад", callback_data=f"manage_{user_type}s")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -281,10 +281,9 @@ def get_cancel_write_keyboard():
 def get_driver_dialog_keyboard():
     """Диалоговая клавиатура водителя"""
     keyboard = [
-        [InlineKeyboardButton("Начать смену", callback_data="start_shift")],
-        [InlineKeyboardButton("Завершить смену", callback_data="end_shift")],
-        [InlineKeyboardButton("Чат", callback_data="open_chat")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+        [InlineKeyboardButton("🔍 Осмотр автомобиля", callback_data="car_inspection")],
+        [InlineKeyboardButton("⚠️ Сообщить о проблеме", callback_data="report_problem")],
+        [InlineKeyboardButton("📋 Мои смены", callback_data="my_shifts")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -311,5 +310,17 @@ def get_writing_message_keyboard():
     """Клавиатура для написания сообщения"""
     keyboard = [
         [InlineKeyboardButton("Отменить", callback_data="cancel_writing")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_problem_keyboard():
+    """Клавиатура для выбора типа проблемы"""
+    keyboard = [
+        [InlineKeyboardButton("🚗 Проблема с машиной", callback_data="problem_car")],
+        [InlineKeyboardButton("📦 Проблема с грузом", callback_data="problem_cargo")],
+        [InlineKeyboardButton("🛣️ Проблема на дороге", callback_data="problem_road")],
+        [InlineKeyboardButton("📍 Проблема в точке доставки", callback_data="problem_delivery")],
+        [InlineKeyboardButton("❓ Другая проблема", callback_data="problem_other")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)

@@ -709,7 +709,7 @@ async def edit_driver_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать редактирование поля водителя"""
     from keyboards import get_cancel_keyboard
     data_parts = update.callback_query.data.split("_")
-    field = data_parts[1]  # name или phone
+    field = data_parts[0]  # name или phone
     driver_id = int(data_parts[3])
 
     context.user_data["state"] = EDITING_DRIVER
@@ -887,7 +887,7 @@ async def edit_logist_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать редактирование поля логиста"""
     from keyboards import get_cancel_keyboard
     data_parts = update.callback_query.data.split("_")
-    field = data_parts[1]  # name или phone
+    field = data_parts[0]  # name или phone
     logist_id = int(data_parts[3])
 
     context.user_data["state"] = EDITING_LOGIST
