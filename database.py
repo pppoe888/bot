@@ -53,5 +53,30 @@ class ChatMessage(Base):
     # Связи
     user = relationship("User", foreign_keys=[user_id])
 
+class ShiftPhoto(Base):
+    __tablename__ = "shift_photos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    photo_type = Column(String, nullable=False)  # front, back, left, right, oil, coolant, interior
+    file_id = Column(String, nullable=False)  # Telegram file_id
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Связи
+    shift = relationship("Shift", foreign_keys=[shift_id])
+
+class CargoItem(Base):
+    __tablename__ = "cargo_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    item_number = Column(String, nullable=False)
+    item_name = Column(String, nullable=False)
+    is_loaded = Column(Boolean, default=False)
+    loaded_at = Column(DateTime, nullable=True)
+
+    # Связи
+    shift = relationship("Shift", foreign_keys=[shift_id])
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)

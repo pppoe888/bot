@@ -4,8 +4,13 @@ from config import BOT_TOKEN, ADMIN_ID
 from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles, handle_contact_help, handle_multi_role_selection
 from keyboards import get_role_selection
 from handlers.driver import start_shift, select_car, show_route, report_problem, handle_problem_report, handle_problem_description, handle_shift_photo
+from handlers.inspection import car_inspection, start_inspection, select_car_for_inspection, handle_inspection_photo, confirm_start_shift, loading_cargo, load_cargo_item, ready_for_delivery
 from handlers.delivery import delivery_list
-from handlers.admin import admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section
+from handlers.admin import (
+        admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section,
+        employees_stats, shifts_stats, active_shifts, shifts_history, view_shift_details, view_shift_inspection, 
+        view_shift_cargo, view_delivered_items, view_car_info, view_active_shift_inspection, view_active_shift_cargo
+    )
 from handlers.admin_actions import (
     handle_add_driver, handle_add_logist, handle_add_car, handle_confirm,
     show_drivers_list, edit_driver, delete_driver, edit_driver_field,
@@ -127,11 +132,22 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["last_message_id"] = message.message_id
 
 async def block_all_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ПОЛНАЯ блокировка всех фотографий без исключений"""
+    """Блокировка фотографий вне процесса осмотра"""
+    current_state = context.user_data.get("state")
+    photo_states = [
+        states.PHOTO_CAR_FRONT, states.PHOTO_CAR_BACK, 
+        states.PHOTO_CAR_LEFT, states.PHOTO_CAR_RIGHT,
+        states.PHOTO_COOLANT, states.PHOTO_OIL, states.PHOTO_INTERIOR
+    ]
+
+    # Если мы в процессе осмотра, пропускаем блокировку
+    if current_state in photo_states:
+        return
+
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="ОТПРАВКА ФОТОГРАФИЙ ПОЛНОСТЬЮ ЗАПРЕЩЕНА!\n\nВСЕ ИЗОБРАЖЕНИЯ ЗАБЛОКИРОВАНЫ:\n• Фото с камеры\n• Фото из галереи\n• Скриншоты\n• Любые картинки\n• Изображения любого типа\n\nБЕЗОПАСНОСТЬ: Передача изображений отключена администратором по соображениям безопасности.\n\nИспользуйте только текстовые сообщения и кнопки интерфейса."
+        text="ОТПРАВКА ФОТОГРАФИЙ ЗАПРЕЩЕНА!\n\nФотографии разрешены только во время осмотра автомобиля.\n\nДля отправки фото:\n1. Выберите '🔍 Осмотр автомобиля'\n2. Следуйте инструкциям\n\nИспользуйте кнопки меню для навигации."
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -207,10 +223,13 @@ def main():
     # Обработчик контактов
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
 
-    # ПОЛНАЯ блокировка всех фотографий без исключений
+    # Обработчик фотографий осмотра (должен быть ДО блокировки)
+    application.add_handler(MessageHandler(filters.PHOTO, handle_inspection_photo))
+
+    # ПОЛНАЯ блокировка всех остальных фотографий
     application.add_handler(MessageHandler(filters.PHOTO, block_all_photos))
 
-    # Админские разделы
+    # Добавляем обработчики админки
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(admin_cars_section, pattern="^admin_cars_section$"))
     application.add_handler(CallbackQueryHandler(admin_employees_section, pattern="^admin_employees_section$"))
@@ -268,6 +287,28 @@ def main():
     application.add_handler(CallbackQueryHandler(end_shift, pattern=r"^end_shift_\d+$"))
     application.add_handler(CallbackQueryHandler(cancel_shift, pattern=r"^cancel_shift_\d+$"))
 
+    # История смен
+    application.add_handler(CallbackQueryHandler(shifts_history, pattern="^shifts_history$"))
+
+    # Просмотр деталей смен
+    application.add_handler(CallbackQueryHandler(view_shift_details, pattern="^view_shift_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_shift_inspection, pattern="^view_inspection_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_shift_cargo, pattern="^view_cargo_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_car_info, pattern="^view_car_info_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_delivered_items, pattern="^view_delivered_\\d+$"))
+
+    # Активные смены  
+    application.add_handler(CallbackQueryHandler(active_shifts, pattern="^show_active_shifts$"))
+
+
+    # Обработчики для осмотра автомобиля
+    application.add_handler(CallbackQueryHandler(car_inspection, pattern="^car_inspection$"))
+    application.add_handler(CallbackQueryHandler(start_inspection, pattern="^start_inspection$"))
+    application.add_handler(CallbackQueryHandler(select_car_for_inspection, pattern="^inspect_car_"))
+    application.add_handler(CallbackQueryHandler(confirm_start_shift, pattern="^confirm_start_shift$"))
+    application.add_handler(CallbackQueryHandler(loading_cargo, pattern="^loading_cargo$"))
+    application.add_handler(CallbackQueryHandler(load_cargo_item, pattern="^load_item_"))
+    application.add_handler(CallbackQueryHandler(ready_for_delivery, pattern="^ready_for_delivery$"))
 
     # Обработчики inline кнопок диалога
     application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report|parking_check|report|cancel_action)$"))
@@ -315,6 +356,15 @@ def main():
         filters.ANIMATION | filters.LOCATION,
         block_all_media
     ))
+
+    # Добавляем обработчики для просмотра фото и списка товаров в активных сменах
+    application.add_handler(CallbackQueryHandler(view_active_shift_inspection, pattern="^view_inspection_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_active_shift_cargo, pattern="^view_cargo_\\d+$"))
+    
+    # Добавляем обработчик для показа фото осмотра в чате
+    from handlers.admin import show_inspection_photos_in_chat, active_shifts
+    application.add_handler(CallbackQueryHandler(show_inspection_photos_in_chat, pattern="^show_photos_\\d+$"))
+    application.add_handler(CallbackQueryHandler(active_shifts, pattern="^active_shifts$"))
 
     # Запуск бота
     print("Бот запущен!")
