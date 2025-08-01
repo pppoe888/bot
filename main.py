@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID
-from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles, handle_contact_help
+from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles, handle_contact_help, handle_multi_role_selection
 from keyboards import get_role_selection
 from handlers.driver import start_shift, select_car, show_route, report_problem, handle_problem_report, handle_problem_description, handle_shift_photo
 from handlers.delivery import delivery_list
@@ -96,6 +96,13 @@ async def handle_back_button(update, context):
 async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка всех текстовых сообщений"""
     text = update.message.text
+
+    # Проверяем, ожидается ли ввод номера телефона текстом
+    if context.user_data.get("awaiting_text_phone"):
+        from handlers.auth import handle_text_phone_input
+        context.user_data.pop("awaiting_text_phone", None)
+        await handle_text_phone_input(update, context, text)
+        return
 
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
@@ -265,11 +272,36 @@ def main():
     # Обработчики inline кнопок диалога
     application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report|parking_check|report|cancel_action)$"))
 
-    # Обработчик помощи с контактом
+    # Обработчик помощи с контактом и методов ввода телефона
     application.add_handler(CallbackQueryHandler(handle_contact_help, pattern="^contact_help$"))
+    
+    # Импортируем новые обработчики
+    from handlers.auth import handle_send_contact_method, handle_text_phone_method, handle_request_contact_button
+    application.add_handler(CallbackQueryHandler(handle_request_contact_button, pattern="^request_contact_button$"))
+    application.add_handler(CallbackQueryHandler(handle_send_contact_method, pattern="^send_contact_method$"))
+    application.add_handler(CallbackQueryHandler(handle_text_phone_method, pattern="^text_phone_method$"))
 
     # Обработчик кнопки назад к ролям
     application.add_handler(CallbackQueryHandler(lambda u, c: start(u, c), pattern="^back_to_roles$"))
+    
+    # Обработчик выбора роли при множественных ролях
+    application.add_handler(CallbackQueryHandler(handle_multi_role_selection, pattern="^auth_role_"))
+    
+    # Обработчик кнопки назад с очисткой клавиатуры
+    async def handle_back_to_start_with_cleanup(update, context):
+        from telegram import ReplyKeyboardRemove
+        try:
+            # Убираем клавиатуру контакта если она активна
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="🔄 Возвращаемся к началу...",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except:
+            pass
+        await start(update, context)
+    
+    application.add_handler(CallbackQueryHandler(handle_back_to_start_with_cleanup, pattern="^back_to_start$"))
 
     # Обработчик всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
