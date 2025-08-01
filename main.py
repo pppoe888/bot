@@ -1,8 +1,8 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID
-from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles
-from keyboards import get_role_selection, get_driver_menu, get_logist_menu, get_contact_keyboard
+from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles, handle_contact_help
+from keyboards import get_role_selection
 from handlers.driver import start_shift, select_car, show_route, report_problem, handle_problem_report, handle_problem_description, handle_shift_photo
 from handlers.delivery import delivery_list
 from handlers.admin import admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section
@@ -62,11 +62,11 @@ async def handle_back_button(update, context):
             if user.role == "driver":
                 from keyboards import get_driver_dialog_keyboard
                 keyboard = get_driver_dialog_keyboard()
-                text = f"🚛 Меню водителя\n\nВыберите действие:"
+                text = f"Меню водителя\n\nВыберите действие:"
             elif user.role == "logist":
                 from keyboards import get_logist_dialog_keyboard
                 keyboard = get_logist_dialog_keyboard()
-                text = f"📋 Меню логиста\n\nВыберите действие:"
+                text = f"Меню логиста\n\nВыберите действие:"
             else:
                 keyboard = get_role_selection()
                 text = "Выберите вашу роль:"
@@ -94,93 +94,54 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         await handle_problem_description(update, context)
         return
 
-    # Обработка выбора роли
-    if text == "👨‍💼 Администратор":
-        # Проверяем, является ли пользователь админом
-        if update.effective_user.id == ADMIN_ID:
-            await delete_previous_messages(update, context)
-            from keyboards import get_admin_inline_keyboard
-            keyboard = get_admin_inline_keyboard()
-            text_msg = "👑 Добро пожаловать, администратор!\n\n🛠️ Админ панель"
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text_msg,
-                reply_markup=keyboard
-            )
-            context.user_data["last_message_id"] = message.message_id
-        else:
-            await delete_previous_messages(update, context)
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="❌ У вас нет прав администратора.\n\nВыберите другую роль:",
-                reply_markup=get_role_selection()
-            )
-            context.user_data["last_message_id"] = message.message_id
-        return
-    elif text in ["📋 Логист", "🚛 Водитель"]:
-        # Определяем выбранную роль
-        selected_role = "logist" if text == "📋 Логист" else "driver"
-        context.user_data["selected_role"] = selected_role
-
-        role_display = "логист" if selected_role == "logist" else "водитель"
-
-        # Удаляем предыдущие сообщения
-        await delete_previous_messages(update, context)
-
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"📱 Для авторизации как {role_display} поделитесь номером телефона:",
-            reply_markup=get_contact_keyboard()
-        )
-        context.user_data["last_message_id"] = message.message_id
-        return
+    
 
     # Обработка кнопки "Назад"
-    if text == "⬅️ Назад":
+    if text == "Назад":
         await handle_back_button(update, context)
         return
 
     # Обработка меню водителя
-    if text == "🚛 Начать смену":
+    if text == "Начать смену":
         await start_shift(update, context)
         return
-    elif text == "📦 Список поставок":
+    elif text == "Список поставок":
         await delivery_list(update, context)
         return
-    elif text == "💬 Чат":
+    elif text == "Чат":
         await chat(update, context)
         return
-    elif text == "🅿️ Парковка":
+    elif text == "Парковка":
         await parking_check(update, context)
         return
-    elif text == "📊 Отчет":
+    elif text == "Отчет":
         await report(update, context)
         return
-    elif text == "🗺️ Маршрут":
+    elif text == "Маршрут":
         await show_route(update, context)
         return
-    elif text == "⚠️ Сообщить о проблеме":
+    elif text == "Сообщить о проблеме":
         await report_problem(update, context)
         return
 
     # Удалено: старые обработчики админского меню заменены на inline кнопки
 
     # Обработка меню логиста
-    if text == "📦 Список доставки":
+    if text == "Список доставки":
         await delivery_list(update, context)
         return
-    elif text == "💬 Чат водителей":
+    elif text == "Чат водителей":
         await chat(update, context)
         return
-    elif text == "📊 Отчёт смен":
+    elif text == "Отчёт смен":
         await report(update, context)
         return
 
     # Обработка чата
-    if text == "✍️ Написать сообщение":
+    if text == "Написать сообщение":
         await write_message(update, context)
         return
-    elif text == "🔄 Обновить":
+    elif text == "Обновить":
         await refresh_chat(update, context)
         return
 
@@ -188,7 +149,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="❌ Команда не распознана. Используйте кнопки меню."
+        text="Команда не распознана. Используйте кнопки меню."
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -197,7 +158,7 @@ async def block_all_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🚫 ОТПРАВКА ФОТОГРАФИЙ ПОЛНОСТЬЮ ЗАПРЕЩЕНА!\n\n❌ ВСЕ ИЗОБРАЖЕНИЯ ЗАБЛОКИРОВАНЫ:\n• Фото с камеры\n• Фото из галереи\n• Скриншоты\n• Любые картинки\n• Изображения любого типа\n\n🛡️ БЕЗОПАСНОСТЬ: Передача изображений отключена администратором по соображениям безопасности.\n\n💡 Используйте только текстовые сообщения и кнопки интерфейса."
+        text="ОТПРАВКА ФОТОГРАФИЙ ПОЛНОСТЬЮ ЗАПРЕЩЕНА!\n\nВСЕ ИЗОБРАЖЕНИЯ ЗАБЛОКИРОВАНЫ:\n• Фото с камеры\n• Фото из галереи\n• Скриншоты\n• Любые картинки\n• Изображения любого типа\n\nБЕЗОПАСНОСТЬ: Передача изображений отключена администратором по соображениям безопасности.\n\nИспользуйте только текстовые сообщения и кнопки интерфейса."
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -206,7 +167,7 @@ async def block_all_media(update, context):
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🚫 ПЕРЕДАЧА МЕДИА ПОЛНОСТЬЮ ЗАБЛОКИРОВАНА!\n\n❌ ЗАПРЕЩЕНО ВСЁ:\n• Все видео файлы\n• Все аудио записи\n• Все документы и файлы\n• Голосовые сообщения\n• Видео-сообщения\n• Стикеры и анимации\n• GIF файлы\n• Геолокация\n• Любые загрузки\n\n🛡️ БЕЗОПАСНОСТЬ: Передача медиа-контента отключена администратором.\n\n💬 Используйте только текстовые сообщения!"
+        text="ПЕРЕДАЧА МЕДИА ПОЛНОСТЬЮ ЗАБЛОКИРОВАНА!\n\nЗАПРЕЩЕНО ВСЁ:\n• Все видео файлы\n• Все аудио записи\n• Все документы и файлы\n• Голосовые сообщения\n• Видео-сообщения\n• Стикеры и анимации\n• GIF файлы\n• Геолокация\n• Любые загрузки\n\nБЕЗОПАСНОСТЬ: Передача медиа-контента отключена администратором.\n\nИспользуйте только текстовые сообщения!"
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -307,7 +268,7 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^edit_phone_logist_\\d+$"))
 
     application.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
-    application.add_handler(CallbackQueryHandler(handle_role_selection, pattern="^role_"))
+    application.add_handler(CallbackQueryHandler(handle_role_selection, pattern="^role_(admin|driver|logist)$"))
 
     # Обработчики для проблем водителей
     application.add_handler(CallbackQueryHandler(handle_problem_report, pattern="^problem_"))
@@ -325,6 +286,12 @@ def main():
 
     # Обработчики inline кнопок диалога
     application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report)$"))
+    
+    # Обработчик помощи с контактом
+    application.add_handler(CallbackQueryHandler(handle_contact_help, pattern="^contact_help$"))
+    
+    # Обработчик кнопки назад к ролям
+    application.add_handler(CallbackQueryHandler(lambda u, c: start(u, c), pattern="^back_to_roles$"))
 
     # Обработчик всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
@@ -338,7 +305,7 @@ def main():
     ))
 
     # Запуск бота
-    print("🤖 Бот запущен!")
+    print("Бот запущен!")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ async def parking_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
     
-    text = "🅿️ Парковка\n\n🚧 Функция в разработке"
+    text = "Парковка\n\nФункция в разработке"
     
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,

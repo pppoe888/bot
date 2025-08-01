@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отчёт"""
-    text = "📊 Отчёт\n\n🚧 Функция в разработке"
+    text = "Отчёт\n\nФункция в разработке"
     
     # Удаляем предыдущие сообщения
     try:

@@ -28,9 +28,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages = db.query(ChatMessage).join(User).order_by(ChatMessage.timestamp.desc()).limit(10).all()
         
         if not messages:
-            text = "💬 Чат пуст\n\nПока что никто ничего не написал."
+            text = "Чат пуст\n\nПока что никто ничего не написал."
         else:
-            text = "💬 Чат водителей\n\n"
+            text = "Чат водителей\n\n"
             for msg in reversed(messages):
                 time_str = msg.timestamp.strftime("%H:%M")
                 text += f"[{time_str}] {msg.user.name}: {msg.message}\n"
@@ -45,7 +45,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"❌ Ошибка загрузки чата: {str(e)}",
+            text=f"Ошибка загрузки чата: {str(e)}",
             reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -60,7 +60,7 @@ async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="✍️ Напишите ваше сообщение:",
+        text="Напишите ваше сообщение:",
         reply_markup=get_writing_message_keyboard()
     )
     context.user_data["last_message_id"] = message.message_id
@@ -75,7 +75,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
             await delete_previous_messages(update, context)
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="❌ Пользователь не найден!",
+                text="Пользователь не найден!",
                 reply_markup=get_chat_inline_keyboard()
             )
             context.user_data["last_message_id"] = message.message_id
@@ -95,7 +95,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="✅ Сообщение отправлено в чат!",
+            text="Сообщение отправлено в чат!",
             reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -107,7 +107,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
         await delete_previous_messages(update, context)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"❌ Ошибка отправки сообщения: {str(e)}",
+            text=f"Ошибка отправки сообщения: {str(e)}",
             reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id

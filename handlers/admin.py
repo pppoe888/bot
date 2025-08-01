@@ -22,7 +22,7 @@ async def delete_previous_messages(update, context):
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Админ панель"""
-    text = "👑 Админ панель\n\nВыберите действие:"
+    text = "Админ панель\n\nВыберите действие:"
 
     try:
         await update.callback_query.edit_message_text(
@@ -46,7 +46,7 @@ async def admin_cars_section(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Раздел автомобили"""
     from keyboards import get_admin_cars_keyboard
     
-    text = "🚗 Раздел: Автомобили\n\nВыберите действие:"
+    text = "Раздел: Автомобили\n\nВыберите действие:"
     
     try:
         await update.callback_query.edit_message_text(
@@ -66,7 +66,7 @@ async def admin_employees_section(update: Update, context: ContextTypes.DEFAULT_
     """Раздел сотрудники"""
     from keyboards import get_admin_employees_keyboard
     
-    text = "👥 Раздел: Сотрудники\n\nВыберите действие:"
+    text = "Раздел: Сотрудники\n\nВыберите действие:"
     
     try:
         await update.callback_query.edit_message_text(
@@ -86,7 +86,7 @@ async def admin_shifts_section(update: Update, context: ContextTypes.DEFAULT_TYP
     """Раздел смены"""
     from keyboards import get_admin_shifts_keyboard
     
-    text = "🚛 Раздел: Смены\n\nВыберите действие:"
+    text = "Раздел: Смены\n\nВыберите действие:"
     
     try:
         await update.callback_query.edit_message_text(
@@ -106,7 +106,7 @@ async def admin_reports_section(update: Update, context: ContextTypes.DEFAULT_TY
     """Раздел отчеты"""
     from keyboards import get_admin_reports_keyboard
     
-    text = "📊 Раздел: Отчеты\n\nВыберите тип отчета:"
+    text = "Раздел: Отчеты\n\nВыберите тип отчета:"
     
     try:
         await update.callback_query.edit_message_text(
@@ -131,10 +131,10 @@ async def cars_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cars_count = db.query(Car).count()
         active_cars = db.query(Shift).filter(Shift.is_active == True).count()
         
-        text = "📊 Статистика по автомобилям\n\n"
-        text += f"🚗 Всего машин: {cars_count}\n"
-        text += f"🚛 В работе: {active_cars}\n"
-        text += f"🅿️ Свободно: {cars_count - active_cars}"
+        text = "Статистика по автомобилям\n\n"
+        text += f"Всего машин: {cars_count}\n"
+        text += f"В работе: {active_cars}\n"
+        text += f"Свободно: {cars_count - active_cars}"
 
         try:
             await update.callback_query.edit_message_text(
@@ -162,10 +162,10 @@ async def employees_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logists_count = db.query(User).filter(User.role == "logist").count()
         active_drivers = db.query(Shift).filter(Shift.is_active == True).count()
         
-        text = "📊 Статистика по сотрудникам\n\n"
-        text += f"👤 Всего водителей: {drivers_count}\n"
-        text += f"🚛 На смене: {active_drivers}\n"
-        text += f"📋 Логистов: {logists_count}"
+        text = "Статистика по сотрудникам\n\n"
+        text += f"Всего водителей: {drivers_count}\n"
+        text += f"На смене: {active_drivers}\n"
+        text += f"Логистов: {logists_count}"
 
         try:
             await update.callback_query.edit_message_text(
@@ -193,10 +193,10 @@ async def shifts_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_shifts = db.query(Shift).count()
         completed_shifts = total_shifts - active_shifts
         
-        text = "📊 Статистика по сменам\n\n"
-        text += f"🚛 Активных смен: {active_shifts}\n"
-        text += f"✅ Завершенных смен: {completed_shifts}\n"
-        text += f"📈 Всего смен: {total_shifts}"
+        text = "Статистика по сменам\n\n"
+        text += f"Активных смен: {active_shifts}\n"
+        text += f"Завершенных смен: {completed_shifts}\n"
+        text += f"Всего смен: {total_shifts}"
 
         try:
             await update.callback_query.edit_message_text(

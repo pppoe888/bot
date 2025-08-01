@@ -1,11 +1,28 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift
-from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard, get_manage_cars_keyboard, get_admin_reports_keyboard, get_admin_shifts_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_car_list_keyboard, get_edit_car_keyboard, get_admin_cars_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_cancel_keyboard
+from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard, get_manage_cars_keyboard, get_admin_reports_keyboard, get_admin_shifts_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_car_list_keyboard, get_edit_car_keyboard, get_admin_cars_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_cancel_keyboard
 import states
 from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR, EDITING_DRIVER, EDITING_LOGIST
 from config import ADMIN_ID
 from datetime import datetime
+
+async def delete_previous_messages(update, context):
+    """Удаляет предыдущие сообщения"""
+    try:
+        if context.user_data.get("last_message_id"):
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=context.user_data["last_message_id"]
+            )
+    except Exception as e:
+        print(f"Ошибка при удалении сообщения: {e}")
+
+    try:
+        if update.message:
+            await update.message.delete()
+    except Exception as e:
+        print(f"Ошибка при удалении текущего сообщения: {e}")
 
 async def track_admin_message(update, context, message):
     """Отслеживает сообщения админки и удаляет старые"""
@@ -23,19 +40,6 @@ async def track_admin_message(update, context, message):
     # Сохраняем только текущее сообщение
     context.user_data["message_history"] = [message.message_id]
     context.user_data["last_message_id"] = message.message_id
-
-async def delete_previous_messages(update, context):
-    """Удаляет предыдущие сообщения"""
-    try:
-        if context.user_data.get("last_message_id"):
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=context.user_data["last_message_id"]
-            )
-        if update.message:
-            await update.message.delete()
-    except:
-        pass
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текста в админских состояниях"""
@@ -61,7 +65,7 @@ async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="👤 Введите имя водителя:",
+        text="Введите имя водителя:",
         reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_DRIVER
@@ -74,10 +78,10 @@ async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_driver_input(update, context, text):
     """Обработка ввода данных водителя"""
     # Проверяем на отмену
-    if text in ["❌ Отменить", "⬅️ Назад"]:
+    if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="❌ Добавление водителя отменено.",
+            text="Добавление водителя отменено.",
             reply_markup=get_admin_inline_keyboard()
         )
         context.user_data.clear()
@@ -92,7 +96,7 @@ async def handle_driver_input(update, context, text):
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="📱 Введите номер телефона водителя:",
+            text="Введите номер телефона водителя:",
             reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -102,9 +106,9 @@ async def handle_driver_input(update, context, text):
         context.user_data["driver_data"] = driver_data
 
         # Показываем данные для подтверждения
-        confirm_text = f"✅ Подтвердите данные водителя:\n\n"
-        confirm_text += f"👤 Имя: {driver_data['name']}\n"
-        confirm_text += f"📱 Телефон: {driver_data['phone']}"
+        confirm_text = f"Подтвердите данные водителя:\n\n"
+        confirm_text += f"Имя: {driver_data['name']}\n"
+        confirm_text += f"Телефон: {driver_data['phone']}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -788,7 +792,7 @@ async def handle_edit_logist_input(update, context, text):
     logist_id = context.user_data.get("edit_logist_id")
     field = context.user_data.get("edit_field")
 
-    if not logist_data.get("edit_logist_id") or not field:
+    if not context.user_data.get("edit_logist_id") or not field:
         return
 
     db = SessionLocal()
@@ -924,6 +928,8 @@ async def show_cars_list(update: Update, context: ContextTypes.DEFAULT_TYPE, act
 
 async def edit_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Редактировать автомобиль"""
+    await delete_previous_messages(update, context)
+
     car_id = int(update.callback_query.data.split("_")[2])
 
     db = SessionLocal()
@@ -1536,4 +1542,3 @@ async def employees_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
     await update.callback_query.answer()
-
