@@ -1,11 +1,28 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift
-from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard
+from keyboards import get_back_keyboard, get_confirm_keyboard, get_admin_inline_keyboard, get_user_list_keyboard, get_edit_user_keyboard, get_manage_drivers_keyboard, get_manage_logists_keyboard, get_manage_cars_keyboard, get_admin_reports_keyboard, get_admin_shifts_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_car_list_keyboard, get_edit_car_keyboard, get_admin_cars_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_admin_reports_keyboard, get_cancel_keyboard
 import states
 from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR, EDITING_DRIVER, EDITING_LOGIST
 from config import ADMIN_ID
 from datetime import datetime
+
+async def track_admin_message(update, context, message):
+    """Отслеживает сообщения админки и удаляет старые"""
+    # Удаляем все предыдущие сообщения перед добавлением нового
+    if context.user_data.get("message_history"):
+        for msg_id in context.user_data["message_history"]:
+            try:
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=msg_id
+                )
+            except:
+                pass
+
+    # Сохраняем только текущее сообщение
+    context.user_data["message_history"] = [message.message_id]
+    context.user_data["last_message_id"] = message.message_id
 
 async def delete_previous_messages(update, context):
     """Удаляет предыдущие сообщения"""
@@ -35,6 +52,8 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_edit_driver_input(update, context, text)
     elif current_state == EDITING_LOGIST:
         await handle_edit_logist_input(update, context, text)
+    elif current_state == "EDITING_CAR":
+        await handle_edit_car_input(update, context, text)
 
 async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать процесс добавления водителя"""
@@ -43,7 +62,7 @@ async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="👤 Введите имя водителя:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_DRIVER
     context.user_data["driver_data"] = {}
@@ -54,6 +73,17 @@ async def handle_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_driver_input(update, context, text):
     """Обработка ввода данных водителя"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Добавление водителя отменено.",
+            reply_markup=get_admin_inline_keyboard()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
     driver_data = context.user_data.get("driver_data", {})
 
     if "name" not in driver_data:
@@ -63,7 +93,7 @@ async def handle_driver_input(update, context, text):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="📱 Введите номер телефона водителя:",
-            reply_markup=get_back_keyboard()
+            reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -81,7 +111,7 @@ async def handle_driver_input(update, context, text):
             text=confirm_text,
             reply_markup=get_confirm_keyboard()
         )
-        context.user_data["last_message_id"] = message.message_id
+        await track_admin_message(update, context, message)
 
 async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать процесс добавления логиста"""
@@ -90,7 +120,7 @@ async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="👤 Введите имя логиста:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_LOGIST
     context.user_data["logist_data"] = {}
@@ -101,6 +131,17 @@ async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_logist_input(update, context, text):
     """Обработка ввода данных логиста"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Добавление логиста отменено.",
+            reply_markup=get_admin_inline_keyboard()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
     logist_data = context.user_data.get("logist_data", {})
 
     if "name" not in logist_data:
@@ -110,7 +151,7 @@ async def handle_logist_input(update, context, text):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="📱 Введите номер телефона логиста:",
-            reply_markup=get_back_keyboard()
+            reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -128,7 +169,7 @@ async def handle_logist_input(update, context, text):
             text=confirm_text,
             reply_markup=get_confirm_keyboard()
         )
-        context.user_data["last_message_id"] = message.message_id
+        await track_admin_message(update, context, message)
 
 async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать процесс добавления машины"""
@@ -137,7 +178,7 @@ async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="🚗 Введите номер машины:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_CAR
     context.user_data["car_data"] = {}
@@ -148,6 +189,17 @@ async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_car_input(update, context, text):
     """Обработка ввода данных машины"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Добавление машины отменено.",
+            reply_markup=get_admin_inline_keyboard()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
     car_data = context.user_data.get("car_data", {})
 
     if "number" not in car_data:
@@ -157,7 +209,7 @@ async def handle_car_input(update, context, text):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="🏭 Введите марку машины (или напишите 'пропустить'):",
-            reply_markup=get_back_keyboard()
+            reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -171,7 +223,7 @@ async def handle_car_input(update, context, text):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="🚙 Введите модель машины (или напишите 'пропустить'):",
-            reply_markup=get_back_keyboard()
+            reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -193,7 +245,7 @@ async def handle_car_input(update, context, text):
             text=confirm_text,
             reply_markup=get_confirm_keyboard()
         )
-        context.user_data["last_message_id"] = message.message_id
+        await track_admin_message(update, context, message)
 
 async def create_admin_entries(phone: str, name: str = "Администратор"):
     """Создает записи администратора как водителя и логиста"""
@@ -289,6 +341,8 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
 
@@ -299,6 +353,8 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -340,6 +396,8 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
 
@@ -350,6 +408,8 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -392,6 +452,8 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
 
@@ -402,6 +464,8 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=text,
             reply_markup=get_admin_inline_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -435,6 +499,8 @@ async def show_drivers_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             text=text,
             reply_markup=get_user_list_keyboard(drivers, action_type)
         )
+        await track_admin_message(update, context, message)
+
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -510,6 +576,7 @@ async def delete_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_driver_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать редактирование поля водителя"""
+    from keyboards import get_cancel_keyboard
     data_parts = update.callback_query.data.split("_")
     field = data_parts[1]  # name или phone
     driver_id = int(data_parts[3])
@@ -522,13 +589,24 @@ async def edit_driver_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.callback_query.edit_message_text(
         text=f"📝 Введите новое {field_text}:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
 
     await update.callback_query.answer()
 
 async def handle_edit_driver_input(update, context, text):
     """Обработка ввода при редактировании водителя"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Редактирование отменено.",
+            reply_markup=get_manage_drivers_keyboard()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
     driver_id = context.user_data.get("edit_driver_id")
     field = context.user_data.get("edit_field")
 
@@ -563,6 +641,8 @@ async def handle_edit_driver_input(update, context, text):
             text=text_msg,
             reply_markup=get_manage_drivers_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
 
@@ -572,6 +652,8 @@ async def handle_edit_driver_input(update, context, text):
             text=f"❌ Ошибка редактирования: {str(e)}",
             reply_markup=get_manage_drivers_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -604,6 +686,8 @@ async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             text=text,
             reply_markup=get_user_list_keyboard(logists, action_type)
         )
+        await track_admin_message(update, context, message)
+
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -670,6 +754,7 @@ async def delete_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_logist_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начать редактирование поля логиста"""
+    from keyboards import get_cancel_keyboard
     data_parts = update.callback_query.data.split("_")
     field = data_parts[1]  # name или phone
     logist_id = int(data_parts[3])
@@ -682,17 +767,28 @@ async def edit_logist_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.callback_query.edit_message_text(
         text=f"📝 Введите новое {field_text}:",
-        reply_markup=get_back_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
 
     await update.callback_query.answer()
 
 async def handle_edit_logist_input(update, context, text):
     """Обработка ввода при редактировании логиста"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Редактирование отменено.",
+            reply_markup=get_manage_logists_keyboard()
+        )
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
     logist_id = context.user_data.get("edit_logist_id")
     field = context.user_data.get("edit_field")
 
-    if not logist_id or not field:
+    if not logist_data.get("edit_logist_id") or not field:
         return
 
     db = SessionLocal()
@@ -723,6 +819,8 @@ async def handle_edit_logist_input(update, context, text):
             text=text_msg,
             reply_markup=get_manage_logists_keyboard()
         )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
 
@@ -732,6 +830,291 @@ async def handle_edit_logist_input(update, context, text):
             text=f"❌ Ошибка редактирования: {str(e)}",
             reply_markup=get_manage_logists_keyboard()
         )
+        await track_admin_message(update, context, message)
+
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+# === УПРАВЛЕНИЕ АВТОМОБИЛЯМИ ===
+
+async def manage_cars(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление автомобилями"""
+    from keyboards import get_manage_cars_keyboard
+
+    text = "🚗 Управление автомобилями\n\nВыберите действие:"
+
+    try:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_manage_cars_keyboard()
+        )
+    except:
+        message = await update.callback_query.message.reply_text(
+            text=text,
+            reply_markup=get_manage_cars_keyboard()
+        )
+        await track_admin_message(update, context, message)
+
+        context.user_data["last_message_id"] = message.message_id
+
+    await update.callback_query.answer()
+
+async def show_cars_list(update: Update, context: ContextTypes.DEFAULT_TYPE, action_type: str = "view"):
+    """Показать список автомобилей"""
+    await delete_previous_messages(update, context)
+
+    db = SessionLocal()
+    try:
+        cars = db.query(Car).all()
+
+        if not cars:
+            from keyboards import get_admin_cars_keyboard
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Автомобили не найдены.",
+                reply_markup=get_admin_cars_keyboard()
+            )
+            context.user_data["last_message_id"] = message.message_id
+            return
+
+        if action_type == "view":
+            text = "🚗 Список автомобилей:\n\n"
+            for car in cars:
+                car_info = f"🚗 {car.number}"
+                if car.brand:
+                    car_info += f" ({car.brand}"
+                    if car.model:
+                        car_info += f" {car.model}"
+                    car_info += ")"
+                text += f"{car_info}\n"
+                if car.fuel:
+                    text += f"⛽ Топливо: {car.fuel}\n"
+                if car.current_mileage:
+                    text += f"📏 Пробег: {car.current_mileage} км\n"
+                text += "───────────────\n"
+
+            from keyboards import get_admin_cars_keyboard
+            message = await context.bot.send_message(
+                chatid=update.effective_chat.id,
+                text=text,
+                reply_markup=get_admin_cars_keyboard()
+            )
+            await track_admin_message(update, context, message)
+
+        else:
+            action_text = "редактирования" if action_type.startswith("edit") else "удаления"
+            text = f"🚗 Выберите автомобиль для {action_text}:"
+
+            from keyboards import get_car_list_keyboard
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                reply_markup=get_car_list_keyboard(cars, action_type)
+            )
+            await track_admin_message(update, context, message)
+
+        context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    if update.callback_query:
+        await update.callback_query.answer()
+
+async def edit_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Редактировать автомобиль"""
+    car_id = int(update.callback_query.data.split("_")[2])
+
+    db = SessionLocal()
+    try:
+        car = db.query(Car).filter(Car.id == car_id).first()
+
+        if not car:
+            await update.callback_query.answer("❌ Автомобиль не найден!")
+            return
+
+        text = f"📝 Редактирование автомобиля:\n\n"
+        text += f"🚗 Номер: {car.number}\n"
+        text += f"🏭 Марка: {car.brand or 'Не указана'}\n"
+        text += f"🚙 Модель: {car.model or 'Не указана'}\n"
+        text += f"⛽ Топливо: {car.fuel or 'Не указано'}\n"
+        text += f"📏 Пробег: {car.current_mileage} км\n\n"
+        text += "Выберите, что хотите изменить:"
+
+        from keyboards import get_edit_car_keyboard
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_edit_car_keyboard(car_id)
+        )
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def delete_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удалить автомобиль"""
+    car_id = int(update.callback_query.data.split("_")[2])
+
+    db = SessionLocal()
+    try:
+        car = db.query(Car).filter(Car.id == car_id).first()
+
+        if not car:
+            await update.callback_query.answer("❌ Автомобиль не найден!")
+            return
+
+        # Проверяем, есть ли активные смены с этим автомобилем
+        active_shifts = db.query(Shift).filter(
+            Shift.car_id == car_id,
+            Shift.is_active == True
+        ).count()
+
+        if active_shifts > 0:
+            text = f"❌ Нельзя удалить автомобиль {car.number}, он используется в активных сменах!"
+        else:
+            db.delete(car)
+            db.commit()
+            text = f"✅ Автомобиль {car.number} успешно удален!"
+
+        from keyboards import get_admin_cars_keyboard
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_admin_cars_keyboard()
+        )
+    except Exception as e:
+        from keyboards import get_admin_cars_keyboard
+        text = f"❌ Ошибка удаления автомобиля: {str(e)}"
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=get_admin_cars_keyboard()
+        )
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def edit_car_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начать редактирование поля автомобиля"""
+    data_parts = update.callback_query.data.split("_")
+    field = data_parts[1]  # number, brand, model, fuel, mileage
+    car_id = int(data_parts[3])
+
+    context.user_data["state"] = "EDITING_CAR"
+    context.user_data["edit_car_id"] = car_id
+    context.user_data["edit_field"] = field
+
+    field_names = {
+        "number": "номер",
+        "brand": "марку",
+        "model": "модель", 
+        "fuel": "тип топлива",
+        "mileage": "пробег (км)"
+    }
+
+    field_text = field_names.get(field, "поле")
+
+    await update.callback_query.edit_message_text(
+        text=f"📝 Введите новое значение для поля '{field_text}':",
+        reply_markup=get_cancel_keyboard()
+    )
+
+    await update.callback_query.answer()
+
+async def handle_edit_car_input(update, context, text):
+    """Обработка ввода при редактировании автомобиля"""
+    # Проверяем на отмену
+    if text in ["❌ Отменить", "⬅️ Назад"]:
+        from keyboards import get_admin_cars_keyboard
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Редактирование отменено.",
+            reply_markup=get_admin_cars_keyboard()
+        )
+        await track_admin_message(update, context, message)
+
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+        return
+
+    car_id = context.user_data.get("edit_car_id")
+    field = context.user_data.get("edit_field")
+
+    if not car_id or not field:
+        return
+
+    db = SessionLocal()
+    try:
+        car = db.query(Car).filter(Car.id == car_id).first()
+
+        if not car:
+            from keyboards import get_admin_cars_keyboard
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Автомобиль не найден!",
+                reply_markup=get_admin_cars_keyboard()
+            )
+            await track_admin_message(update, context, message)
+
+            context.user_data.clear()
+            context.user_data["last_message_id"] = message.message_id
+            return
+
+        old_value = getattr(car, field)
+
+        # Специальная обработка для пробега
+        if field == "mileage":
+            try:
+                new_value = int(text)
+                setattr(car, "current_mileage", new_value)
+            except ValueError:
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Пробег должен быть числом!",
+                    reply_markup=get_back_keyboard()
+                )
+                await track_admin_message(update, context, message)
+
+                context.user_data["last_message_id"] = message.message_id
+                return
+        else:
+            setattr(car, field, text)
+
+        db.commit()
+
+        field_names = {
+            "number": "номер",
+            "brand": "марка",
+            "model": "модель", 
+            "fuel": "тип топлива",
+            "mileage": "пробег"
+        }
+
+        field_text = field_names.get(field, "поле")
+        text_msg = f"✅ {field_text.capitalize()} автомобиля изменено!\n\n"
+        text_msg += f"Было: {old_value if field != 'mileage' else getattr(car, 'current_mileage')}\n"
+        text_msg += f"Стало: {text if field != 'mileage' else getattr(car, 'current_mileage')}"
+
+        from keyboards import get_admin_cars_keyboard
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text_msg,
+            reply_markup=get_admin_cars_keyboard()
+        )
+        await track_admin_message(update, context, message)
+
+        context.user_data.clear()
+        context.user_data["last_message_id"] = message.message_id
+
+    except Exception as e:
+        from keyboards import get_admin_cars_keyboard
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"❌ Ошибка редактирования: {str(e)}",
+            reply_markup=get_admin_cars_keyboard()
+        )
+        await track_admin_message(update, context, message)
+
         context.user_data.clear()
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -794,6 +1177,8 @@ async def show_active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE)
             text=text,
             reply_markup=reply_markup
         )
+        await track_admin_message(update, context, message)
+
         context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -994,6 +1379,8 @@ async def shifts_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=text,
                 reply_markup=get_admin_shifts_keyboard()
             )
+            await track_admin_message(update, context, message)
+
             context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -1044,6 +1431,8 @@ async def shifts_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=text,
                 reply_markup=get_admin_reports_keyboard()
             )
+            await track_admin_message(update, context, message)
+
             context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -1087,6 +1476,8 @@ async def cars_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=text,
                 reply_markup=get_admin_reports_keyboard()
             )
+            await track_admin_message(update, context, message)
+
             context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
@@ -1138,8 +1529,11 @@ async def employees_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=text,
                 reply_markup=get_admin_reports_keyboard()
             )
+            await track_admin_message(update, context, message)
+
             context.user_data["last_message_id"] = message.message_id
     finally:
         db.close()
 
     await update.callback_query.answer()
+

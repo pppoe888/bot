@@ -2,7 +2,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, ChatMessage
-from keyboards import get_chat_keyboard
+from keyboards import get_chat_keyboard, get_chat_inline_keyboard, get_writing_message_keyboard
 from datetime import datetime
 
 async def delete_previous_messages(update, context):
@@ -38,7 +38,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
-            reply_markup=get_chat_keyboard()
+            reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -46,7 +46,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"❌ Ошибка загрузки чата: {str(e)}",
-            reply_markup=get_chat_keyboard()
+            reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
     finally:
@@ -61,7 +61,7 @@ async def write_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="✍️ Напишите ваше сообщение:",
-        reply_markup=get_chat_keyboard()
+        reply_markup=get_writing_message_keyboard()
     )
     context.user_data["last_message_id"] = message.message_id
 
@@ -76,7 +76,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
             message = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="❌ Пользователь не найден!",
-                reply_markup=get_chat_keyboard()
+                reply_markup=get_chat_inline_keyboard()
             )
             context.user_data["last_message_id"] = message.message_id
             return
@@ -96,7 +96,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="✅ Сообщение отправлено в чат!",
-            reply_markup=get_chat_keyboard()
+            reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
 
@@ -108,7 +108,7 @@ async def send_message_to_chat(update: Update, context: ContextTypes.DEFAULT_TYP
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"❌ Ошибка отправки сообщения: {str(e)}",
-            reply_markup=get_chat_keyboard()
+            reply_markup=get_chat_inline_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
     finally:

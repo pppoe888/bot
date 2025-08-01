@@ -11,7 +11,8 @@ from handlers.admin_actions import (
         handle_confirm, handle_admin_text,
         show_drivers_list, edit_driver, delete_driver, edit_driver_field,
         show_logists_list, edit_logist, delete_logist, edit_logist_field,
-        show_active_shifts, end_shift, cancel_shift
+        show_active_shifts, end_shift, cancel_shift,
+        show_cars_list, edit_car, delete_car, edit_car_field, manage_cars
     )
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
 from handlers.parking import parking_check
@@ -59,11 +60,13 @@ async def handle_back_button(update, context):
 
         if user:
             if user.role == "driver":
-                keyboard = get_driver_menu()
-                text = f"🚛 Меню водителя"
+                from keyboards import get_driver_dialog_keyboard
+                keyboard = get_driver_dialog_keyboard()
+                text = f"🚛 Меню водителя\n\nВыберите действие:"
             elif user.role == "logist":
-                keyboard = get_logist_menu()
-                text = f"📋 Меню логиста"
+                from keyboards import get_logist_dialog_keyboard
+                keyboard = get_logist_dialog_keyboard()
+                text = f"📋 Меню логиста\n\nВыберите действие:"
             else:
                 keyboard = get_role_selection()
                 text = "Выберите вашу роль:"
@@ -207,6 +210,50 @@ async def block_all_media(update, context):
     )
     context.user_data["last_message_id"] = message.message_id
 
+async def cleanup_admin_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Очистка чата администратора (удаление последних сообщений)"""
+    chat_id = update.effective_chat.id
+    message_ids = context.chat_data.get("admin_message_ids", [])
+
+    # Удаляем сообщения в обратном порядке
+    for message_id in reversed(message_ids):
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения {message_id}: {e}")
+
+    # Очищаем список message_ids
+    context.chat_data["admin_message_ids"] = []
+
+async def handle_dialog_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик inline кнопок диалога"""
+    query = update.callback_query
+    data = query.data
+
+    if data == "write_message":
+        await write_message(update, context)
+    elif data == "refresh_chat":
+        await refresh_chat(update, context)
+    elif data == "open_chat":
+        await chat(update, context)
+    elif data == "cancel_writing":
+        context.user_data.pop("state", None)
+        await chat(update, context)
+    elif data == "back_to_menu":
+        await handle_back_button(update, context)
+    elif data == "start_shift":
+        await start_shift(update, context)
+    elif data == "show_route":
+        await show_route(update, context)
+    elif data == "report_problem":
+        await report_problem(update, context)
+    elif data == "delivery_list":
+        await delivery_list(update, context)
+    elif data == "shifts_report":
+        await report(update, context)
+
+    await query.answer()
+
 def main():
     """Главная функция бота"""
     application = Application.builder().token(BOT_TOKEN).build()
@@ -222,24 +269,27 @@ def main():
     # ПОЛНАЯ блокировка всех фотографий без исключений
     application.add_handler(MessageHandler(filters.PHOTO, block_all_photos))
 
-    # Обработчики callback'ов
-    from handlers.admin_actions import (
-        handle_add_driver, handle_add_logist, handle_add_car,
-        handle_confirm, handle_admin_text,
-        show_drivers_list, edit_driver, delete_driver, edit_driver_field,
-        show_logists_list, edit_logist, delete_logist, edit_logist_field,
-        show_active_shifts, end_shift, cancel_shift
-    )
+    # Админские разделы
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(admin_cars_section, pattern="^admin_cars_section$"))
     application.add_handler(CallbackQueryHandler(admin_employees_section, pattern="^admin_employees_section$"))
     application.add_handler(CallbackQueryHandler(admin_shifts_section, pattern="^admin_shifts_section$"))
     application.add_handler(CallbackQueryHandler(admin_reports_section, pattern="^admin_reports_section$"))
 
+    # Админские действия
     application.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
     application.add_handler(CallbackQueryHandler(handle_add_logist, pattern="^add_logist$"))
     application.add_handler(CallbackQueryHandler(handle_add_car, pattern="^add_car$"))
     application.add_handler(CallbackQueryHandler(handle_confirm, pattern="^confirm$"))
+    application.add_handler(CallbackQueryHandler(manage_cars, pattern="^manage_cars$"))
+
+    # Управление автомобилями
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_cars_list(u, c, "view"), pattern="^cars_list_view$"))
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_cars_list(u, c, "edit"), pattern="^cars_list_edit$"))
+    application.add_handler(CallbackQueryHandler(lambda u, c: show_cars_list(u, c, "delete"), pattern="^cars_list_delete$"))
+    application.add_handler(CallbackQueryHandler(edit_car, pattern="^edit_car_\\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_car, pattern="^delete_car_\\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_car_field, pattern="^(number|brand|model|fuel|mileage)_edit_\\d+$"))
 
     application.add_handler(CallbackQueryHandler(lambda u, c: show_drivers_list(u, c, "edit_driver"), pattern="^edit_driver_list$"))
     application.add_handler(CallbackQueryHandler(lambda u, c: show_logists_list(u, c, "edit_logist"), pattern="^edit_logist_list$"))
@@ -271,6 +321,10 @@ def main():
     application.add_handler(CallbackQueryHandler(show_active_shifts, pattern=r"^show_active_shifts$"))
     application.add_handler(CallbackQueryHandler(end_shift, pattern=r"^end_shift_\d+$"))
     application.add_handler(CallbackQueryHandler(cancel_shift, pattern=r"^cancel_shift_\d+$"))
+    
+
+    # Обработчики inline кнопок диалога
+    application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report)$"))
 
     # Обработчик всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
