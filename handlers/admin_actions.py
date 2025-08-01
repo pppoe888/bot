@@ -123,7 +123,7 @@ async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="👤 Введите имя логиста:",
+        text="Введите имя логиста:",
         reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_LOGIST
@@ -136,10 +136,10 @@ async def handle_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_logist_input(update, context, text):
     """Обработка ввода данных логиста"""
     # Проверяем на отмену
-    if text in ["❌ Отменить", "⬅️ Назад"]:
+    if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="❌ Добавление логиста отменено.",
+            text="Добавление логиста отменено.",
             reply_markup=get_admin_inline_keyboard()
         )
         context.user_data.clear()
@@ -154,7 +154,7 @@ async def handle_logist_input(update, context, text):
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="📱 Введите номер телефона логиста:",
+            text="Введите номер телефона логиста:",
             reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -164,9 +164,9 @@ async def handle_logist_input(update, context, text):
         context.user_data["logist_data"] = logist_data
 
         # Показываем данные для подтверждения
-        confirm_text = f"✅ Подтвердите данные логиста:\n\n"
-        confirm_text += f"👤 Имя: {logist_data['name']}\n"
-        confirm_text += f"📱 Телефон: {logist_data['phone']}"
+        confirm_text = f"Подтвердите данные логиста:\n\n"
+        confirm_text += f"Имя: {logist_data['name']}\n"
+        confirm_text += f"Телефон: {logist_data['phone']}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -181,7 +181,7 @@ async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🚗 Введите номер машины:",
+        text="Введите номер машины:",
         reply_markup=get_cancel_keyboard()
     )
     context.user_data["state"] = ADDING_CAR
@@ -194,10 +194,10 @@ async def handle_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_car_input(update, context, text):
     """Обработка ввода данных машины"""
     # Проверяем на отмену
-    if text in ["❌ Отменить", "⬅️ Назад"]:
+    if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="❌ Добавление машины отменено.",
+            text="Добавление машины отменено.",
             reply_markup=get_admin_inline_keyboard()
         )
         context.user_data.clear()
@@ -212,7 +212,7 @@ async def handle_car_input(update, context, text):
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="🏭 Введите марку машины (или напишите 'пропустить'):",
+            text="Введите марку машины (или напишите 'пропустить'):",
             reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -226,7 +226,7 @@ async def handle_car_input(update, context, text):
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="🚙 Введите модель машины (или напишите 'пропустить'):",
+            text="Введите модель машины (или напишите 'пропустить'):",
             reply_markup=get_cancel_keyboard()
         )
         context.user_data["last_message_id"] = message.message_id
@@ -239,10 +239,10 @@ async def handle_car_input(update, context, text):
         context.user_data["car_data"] = car_data
 
         # Показываем данные для подтверждения
-        confirm_text = f"✅ Подтвердите данные машины:\n\n"
-        confirm_text += f"🚗 Номер: {car_data['number']}\n"
-        confirm_text += f"🏭 Марка: {car_data.get('brand', 'Не указана')}\n"
-        confirm_text += f"🚙 Модель: {car_data.get('model', 'Не указана')}"
+        confirm_text = f"Подтвердите данные машины:\n\n"
+        confirm_text += f"Номер: {car_data['number']}\n"
+        confirm_text += f"Марка: {car_data.get('brand', 'Не указана')}\n"
+        confirm_text += f"Модель: {car_data.get('model', 'Не указана')}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -322,9 +322,9 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
         existing_user = db.query(User).filter(User.phone == driver_data["phone"]).first()
 
         if existing_user:
-            text = f"❌ Пользователь с номером {driver_data['phone']} уже существует!\n\n"
-            text += f"👤 Имя: {existing_user.name}\n"
-            text += f"📋 Роль: {existing_user.role}"
+            text = f"Пользователь с номером {driver_data['phone']} уже существует!\n\n"
+            text += f"Имя: {existing_user.name}\n"
+            text += f"Роль: {existing_user.role}"
         else:
             # Создаем нового водителя
             new_driver = User(
@@ -336,9 +336,9 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
             db.add(new_driver)
             db.commit()
 
-            text = f"✅ Водитель успешно добавлен!\n\n"
-            text += f"👤 Имя: {driver_data['name']}\n"
-            text += f"📱 Телефон: {driver_data['phone']}"
+            text = f"Водитель успешно добавлен!\n\n"
+            text += f"Имя: {driver_data['name']}\n"
+            text += f"Телефон: {driver_data['phone']}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -351,7 +351,7 @@ async def confirm_add_driver(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["last_message_id"] = message.message_id
 
     except Exception as e:
-        text = f"❌ Ошибка добавления водителя: {str(e)}"
+        text = f"Ошибка добавления водителя: {str(e)}"
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -377,9 +377,9 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
         existing_user = db.query(User).filter(User.phone == logist_data["phone"]).first()
 
         if existing_user:
-            text = f"❌ Пользователь с номером {logist_data['phone']} уже существует!\n\n"
-            text += f"👤 Имя: {existing_user.name}\n"
-            text += f"📋 Роль: {existing_user.role}"
+            text = f"Пользователь с номером {logist_data['phone']} уже существует!\n\n"
+            text += f"Имя: {existing_user.name}\n"
+            text += f"Роль: {existing_user.role}"
         else:
             # Создаем нового логиста
             new_logist = User(
@@ -391,9 +391,9 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
             db.add(new_logist)
             db.commit()
 
-            text = f"✅ Логист успешно добавлен!\n\n"
-            text += f"👤 Имя: {logist_data['name']}\n"
-            text += f"📱 Телефон: {logist_data['phone']}"
+            text = f"Логист успешно добавлен!\n\n"
+            text += f"Имя: {logist_data['name']}\n"
+            text += f"Телефон: {logist_data['phone']}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -406,7 +406,7 @@ async def confirm_add_logist(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["last_message_id"] = message.message_id
 
     except Exception as e:
-        text = f"❌ Ошибка добавления логиста: {str(e)}"
+        text = f"Ошибка добавления логиста: {str(e)}"
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -432,9 +432,9 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
         existing_car = db.query(Car).filter(Car.number == car_data["number"]).first()
 
         if existing_car:
-            text = f"❌ Машина с номером {car_data['number']} уже существует!\n\n"
-            text += f"🏭 Марка: {existing_car.brand or 'Не указана'}\n"
-            text += f"🚙 Модель: {existing_car.model or 'Не указана'}"
+            text = f"Машина с номером {car_data['number']} уже существует!\n\n"
+            text += f"Марка: {existing_car.brand or 'Не указана'}\n"
+            text += f"Модель: {existing_car.model or 'Не указана'}"
         else:
             # Создаем новую машину
             new_car = Car(
@@ -446,10 +446,10 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.add(new_car)
             db.commit()
 
-            text = f"✅ Машина успешно добавлена!\n\n"
-            text += f"🚗 Номер: {car_data['number']}\n"
-            text += f"🏭 Марка: {car_data.get('brand', 'Не указана')}\n"
-            text += f"🚙 Модель: {car_data.get('model', 'Не указана')}"
+            text = f"Машина успешно добавлена!\n\n"
+            text += f"Номер: {car_data['number']}\n"
+            text += f"Марка: {car_data.get('brand', 'Не указана')}\n"
+            text += f"Модель: {car_data.get('model', 'Не указана')}"
 
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -462,7 +462,7 @@ async def confirm_add_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["last_message_id"] = message.message_id
 
     except Exception as e:
-        text = f"❌ Ошибка добавления машины: {str(e)}"
+        text = f"Ошибка добавления машины: {str(e)}"
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -901,7 +901,7 @@ async def show_cars_list(update: Update, context: ContextTypes.DEFAULT_TYPE, act
 
             from keyboards import get_admin_cars_keyboard
             message = await context.bot.send_message(
-                chatid=update.effective_chat.id,
+                chat_id=update.effective_chat.id,
                 text=text,
                 reply_markup=get_admin_cars_keyboard()
             )

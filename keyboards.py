@@ -1,33 +1,39 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
-def get_contact_inline_keyboard():
-    """Inline клавиатура для запроса контакта"""
+def get_start_keyboard():
+    """Стартовая клавиатура"""
     keyboard = [
-        [InlineKeyboardButton("Как поделиться номером?", callback_data="contact_help")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+        [InlineKeyboardButton("Отправить контакт", request_contact=True)]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_role_selection():
     """Клавиатура выбора роли"""
     keyboard = [
-        [InlineKeyboardButton("Администратор", callback_data="role_admin")],
-        [InlineKeyboardButton("Логист", callback_data="role_logist"), 
-         InlineKeyboardButton("Водитель", callback_data="role_driver")]
+        [InlineKeyboardButton("Водитель", callback_data="role_driver")],
+        [InlineKeyboardButton("Логист", callback_data="role_logist")],
+        [InlineKeyboardButton("Администратор", callback_data="role_admin")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_contact_instruction_keyboard():
-    """Inline клавиатура с инструкциями по отправке контакта"""
+def get_role_keyboard():
+    """Клавиатура выбора роли"""
     keyboard = [
-        [InlineKeyboardButton("Назад к выбору роли", callback_data="back_to_roles")]
+        [InlineKeyboardButton("Водитель", callback_data="role_driver")],
+        [InlineKeyboardButton("Логист", callback_data="role_logist")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-
+def get_contact_inline_keyboard():
+    """Клавиатура для контакта"""
+    keyboard = [
+        [InlineKeyboardButton("Как поделиться контактом", callback_data="contact_help")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_admin_inline_keyboard():
-    """Главная клавиатура админа"""
+    """Главная админ клавиатура"""
     keyboard = [
         [InlineKeyboardButton("Автомобили", callback_data="admin_cars_section")],
         [InlineKeyboardButton("Сотрудники", callback_data="admin_employees_section")],
@@ -39,8 +45,10 @@ def get_admin_inline_keyboard():
 def get_admin_cars_keyboard():
     """Клавиатура раздела автомобили"""
     keyboard = [
-        [InlineKeyboardButton("Управление машинами", callback_data="manage_cars")],
-        [InlineKeyboardButton("Статистика по машинам", callback_data="cars_stats")],
+        [InlineKeyboardButton("Добавить автомобиль", callback_data="add_car")],
+        [InlineKeyboardButton("Редактировать автомобиль", callback_data="cars_list_edit")],
+        [InlineKeyboardButton("Удалить автомобиль", callback_data="cars_list_delete")],
+        [InlineKeyboardButton("Список автомобилей", callback_data="cars_list_view")],
         [InlineKeyboardButton("Назад", callback_data="admin_panel")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -87,8 +95,6 @@ def get_admin_reports_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# Удалены Reply клавиатуры - используются только inline кнопки
-
 def get_back_keyboard():
     """Клавиатура с кнопкой назад"""
     keyboard = [["Назад"]]
@@ -118,21 +124,13 @@ def get_chat_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def get_confirm_keyboard():
-    """Клавиатура подтверждения"""
-    keyboard = [
-        [InlineKeyboardButton("Подтвердить", callback_data="confirm")],
-        [InlineKeyboardButton("Отменить", callback_data="admin_panel")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 def get_manage_drivers_keyboard():
     """Клавиатура управления водителями"""
     keyboard = [
         [InlineKeyboardButton("Добавить водителя", callback_data="add_driver")],
         [InlineKeyboardButton("Редактировать водителя", callback_data="edit_driver_list")],
         [InlineKeyboardButton("Удалить водителя", callback_data="delete_driver_list")],
-        [InlineKeyboardButton("Назад", callback_data="admin_panel")]
+        [InlineKeyboardButton("Назад", callback_data="admin_employees_section")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -142,22 +140,49 @@ def get_manage_logists_keyboard():
         [InlineKeyboardButton("Добавить логиста", callback_data="add_logist")],
         [InlineKeyboardButton("Редактировать логиста", callback_data="edit_logist_list")],
         [InlineKeyboardButton("Удалить логиста", callback_data="delete_logist_list")],
-        [InlineKeyboardButton("Назад", callback_data="admin_panel")]
+        [InlineKeyboardButton("Назад", callback_data="admin_employees_section")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_confirm_keyboard():
+    """Клавиатура подтверждения"""
+    keyboard = [
+        [InlineKeyboardButton("Подтвердить", callback_data="confirm")],
+        [InlineKeyboardButton("Отменить", callback_data="admin_panel")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_user_list_keyboard(users, action_type):
-    """Клавиатура со списком пользователей для действий"""
+    """Клавиатура со списком пользователей"""
     keyboard = []
+
     for user in users:
-        callback_data = f"{action_type}_{user.id}"
+        if action_type == "edit_driver":
+            callback_data = f"edit_driver_{user.id}"
+        elif action_type == "delete_driver":
+            callback_data = f"delete_driver_{user.id}"
+        elif action_type == "edit_logist":
+            callback_data = f"edit_logist_{user.id}"
+        elif action_type == "delete_logist":
+            callback_data = f"delete_logist_{user.id}"
+        else:
+            callback_data = f"view_user_{user.id}"
+
         keyboard.append([InlineKeyboardButton(f"{user.name} ({user.phone})", callback_data=callback_data)])
-    keyboard.append([InlineKeyboardButton("Назад", callback_data="admin_panel")])
+
+    if action_type.startswith("edit_driver") or action_type.startswith("delete_driver"):
+        keyboard.append([InlineKeyboardButton("Назад", callback_data="manage_drivers")])
+    elif action_type.startswith("edit_logist") or action_type.startswith("delete_logist"):
+        keyboard.append([InlineKeyboardButton("Назад", callback_data="manage_logists")])
+    else:
+        keyboard.append([InlineKeyboardButton("Назад", callback_data="admin_employees_section")])
+
     return InlineKeyboardMarkup(keyboard)
 
 def get_car_list_keyboard(cars, action_type):
-    """Клавиатура со списком автомобилей для действий"""
+    """Клавиатура со списком автомобилей"""
     keyboard = []
+
     for car in cars:
         car_name = car.number
         if car.brand:
@@ -193,109 +218,79 @@ def get_edit_car_keyboard(car_id):
 def get_edit_user_keyboard(user_id, user_type):
     """Клавиатура для редактирования пользователя"""
     keyboard = [
-        [InlineKeyboardButton("Изменить имя", callback_data=f"edit_name_{user_type}_{user_id}")],
-        [InlineKeyboardButton("Изменить телефон", callback_data=f"edit_phone_{user_type}_{user_id}")],
+        [InlineKeyboardButton("Имя", callback_data=f"name_edit_{user_type}_{user_id}")],
+        [InlineKeyboardButton("Телефон", callback_data=f"phone_edit_{user_type}_{user_id}")],
         [InlineKeyboardButton("Назад", callback_data=f"manage_{user_type}s")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_manage_cars_keyboard():
-    """Клавиатура управления машинами"""
-    keyboard = [
-        [InlineKeyboardButton("Добавить машину", callback_data="add_car")],
-        [InlineKeyboardButton("Назад", callback_data="admin_panel")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_car_selection_keyboard(cars):
-    """Клавиатура выбора машины"""
-    keyboard = []
-    for car in cars:
-        keyboard.append([InlineKeyboardButton(
-            f"{car.number} ({car.brand} {car.model})",
-            callback_data=f"select_car_{car.id}"
-        )])
-    keyboard.append([InlineKeyboardButton("Назад", callback_data="admin_panel")])
-    return InlineKeyboardMarkup(keyboard)
-
-def get_main_menu_keyboard():
-    """Главное меню системы"""
-    keyboard = [
-        ["Главная", "Помощь"],
-        ["Настройки"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-def get_admin_main_keyboard():
-    """Основная клавиатура для админа (Reply)"""
-    keyboard = [
-        ["Автомобили", "Сотрудники"], 
-        ["Смены", "Отчеты"],
-        ["Чат", "Настройки"],
-        ["Главная"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-def get_driver_main_keyboard():
-    """Основная клавиатура для водителя"""
-    keyboard = [
-        ["Начать смену", "Завершить смену"],
-        ["Маршрут", "Доставка"],
-        ["Чат", "Проблема"],
-        ["Мой отчет", "Главная"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-def get_logist_main_keyboard():
-    """Основная клавиатура для логиста"""
-    keyboard = [
-        ["Список доставки", "Смены водителей"],
-        ["Чат", "Отчеты"],
-        ["Водители", "Автопарк"],
-        ["Главная"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-def get_quick_actions_keyboard():
-    """Быстрые действия"""
-    keyboard = [
-        ["Срочная помощь", "Связаться"],
-        ["Моя позиция", "Назад"]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_chat_inline_keyboard():
-    """Inline кнопки для чата как часть диалога"""
-    keyboard = [
-        [InlineKeyboardButton("Написать сообщение", callback_data="write_message")],
-        [InlineKeyboardButton("Обновить чат", callback_data="refresh_chat")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_driver_dialog_keyboard():
-    """Inline кнопки для диалога водителя"""
+def get_driver_menu():
+    """Главное меню водителя"""
     keyboard = [
         [InlineKeyboardButton("Начать смену", callback_data="start_shift")],
-        [InlineKeyboardButton("Маршрут", callback_data="show_route")],
-        [InlineKeyboardButton("Сообщить о проблеме", callback_data="report_problem")],
+        [InlineKeyboardButton("Завершить смену", callback_data="end_shift")],
         [InlineKeyboardButton("Чат", callback_data="open_chat")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_logist_dialog_keyboard():
-    """Inline кнопки для диалога логиста"""
+def get_logist_menu():
+    """Главное меню логиста"""
     keyboard = [
-        [InlineKeyboardButton("Список доставки", callback_data="delivery_list")],
-        [InlineKeyboardButton("Чат водителей", callback_data="open_chat")],
-        [InlineKeyboardButton("Отчёт смен", callback_data="shifts_report")]
+        [InlineKeyboardButton("Маршруты", callback_data="show_route")],
+        [InlineKeyboardButton("Доставки", callback_data="delivery_list")],
+        [InlineKeyboardButton("Отчет смен", callback_data="shifts_report")],
+        [InlineKeyboardButton("Чат", callback_data="open_chat")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_chat_inline_keyboard():
+    """Inline клавиатура для чата"""
+    keyboard = [
+        [InlineKeyboardButton("Написать сообщение", callback_data="write_message")],
+        [InlineKeyboardButton("Обновить", callback_data="refresh_chat")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_cancel_write_keyboard():
+    """Клавиатура отмены написания сообщения"""
+    keyboard = [
+        [InlineKeyboardButton("Отменить", callback_data="cancel_writing")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_driver_dialog_keyboard():
+    """Диалоговая клавиатура водителя"""
+    keyboard = [
+        [InlineKeyboardButton("Начать смену", callback_data="start_shift")],
+        [InlineKeyboardButton("Завершить смену", callback_data="end_shift")],
+        [InlineKeyboardButton("Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_logist_dialog_keyboard():
+    """Диалоговая клавиатура логиста"""
+    keyboard = [
+        [InlineKeyboardButton("Маршруты", callback_data="show_route")],
+        [InlineKeyboardButton("Доставки", callback_data="delivery_list")],
+        [InlineKeyboardButton("Отчет смен", callback_data="shifts_report")],
+        [InlineKeyboardButton("Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_shift_start_keyboard():
+    """Клавиатура начала смены"""
+    keyboard = [
+        [InlineKeyboardButton("Выбрать автомобиль", callback_data="select_car_for_shift")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_writing_message_keyboard():
-    """Inline кнопки при написании сообщения"""
+    """Клавиатура для написания сообщения"""
     keyboard = [
-        [InlineKeyboardButton("Отменить", callback_data="cancel_writing")],
-        [InlineKeyboardButton("Обновить чат", callback_data="refresh_chat")]
+        [InlineKeyboardButton("Отменить", callback_data="cancel_writing")]
     ]
     return InlineKeyboardMarkup(keyboard)

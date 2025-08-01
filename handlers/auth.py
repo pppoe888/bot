@@ -11,7 +11,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяем, является ли пользователь администратором
     if user_id == ADMIN_ID:
         keyboard = get_role_selection()
-        text = "Добро пожаловать, администратор!\n\nВыберите роль для входа:"
+        text = "Выберите вход:"
         
         if update.message:
             message = await update.message.reply_text(text, reply_markup=keyboard)
@@ -26,7 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Для всех остальных пользователей показываем меню выбора роли
     keyboard = get_role_selection()
-    text = "Добро пожаловать!\n\nВыберите вашу роль:"
+    text = "Выберите вход:"
     
     if update.message:
         message = await update.message.reply_text(text, reply_markup=keyboard)
@@ -111,7 +111,7 @@ async def handle_role_selection(update: Update, context: ContextTypes.DEFAULT_TY
         # Проверяем права администратора
         if update.effective_user.id == ADMIN_ID:
             from keyboards import get_admin_inline_keyboard
-            text = "Добро пожаловать, администратор!\n\nАдмин панель"
+            text = "Администрирование"
             try:
                 await query.edit_message_text(text=text, reply_markup=get_admin_inline_keyboard())
             except:

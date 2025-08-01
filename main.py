@@ -48,7 +48,7 @@ async def handle_back_button(update, context):
     if user_id == ADMIN_ID:
         from keyboards import get_admin_inline_keyboard
         keyboard = get_admin_inline_keyboard()
-        text = "👑 Админ панель"
+        text = "Администрирование"
         message = await update.message.reply_text(text, reply_markup=keyboard)
         context.user_data["last_message_id"] = message.message_id
         return
