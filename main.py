@@ -7,11 +7,14 @@ from handlers.driver import start_shift, select_car, show_route, report_problem,
 from handlers.inspection import car_inspection, start_inspection, select_car_for_inspection, handle_inspection_photo, confirm_start_shift, loading_cargo, load_cargo_item, ready_for_delivery
 from handlers.delivery import delivery_list
 from handlers.admin import (
-        admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section,
-        employees_stats, shifts_stats, view_shift_details, view_shift_inspection, 
-        view_shift_cargo, view_delivered_items, view_car_info, view_active_shift_inspection, view_active_shift_cargo,
-        show_inspection_photos_in_chat
-    )
+    admin_panel, admin_cars_section, admin_employees_section, 
+    admin_shifts_section, admin_reports_section, employees_stats, 
+    shifts_stats, view_car_info, view_delivered_items, view_shift_details,
+    view_shift_inspection, view_shift_cargo, active_shifts, 
+    view_history_shift_inspection,
+    view_active_shift_cargo, shifts_history,
+    show_active_shift_photos
+)
 from handlers.admin_actions import (
     manage_drivers, manage_logists, manage_cars, show_employees_list,
     handle_add_driver, handle_add_logist, handle_add_car, handle_confirm,
@@ -231,12 +234,15 @@ def main():
     # ПОЛНАЯ блокировка всех остальных фотографий
     application.add_handler(MessageHandler(filters.PHOTO, block_all_photos))
 
-    # Добавляем обработчики админки
+    # Обработчики админ панели
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
     application.add_handler(CallbackQueryHandler(admin_cars_section, pattern="^admin_cars_section$"))
     application.add_handler(CallbackQueryHandler(admin_employees_section, pattern="^admin_employees_section$"))
     application.add_handler(CallbackQueryHandler(admin_shifts_section, pattern="^admin_shifts_section$"))
     application.add_handler(CallbackQueryHandler(admin_reports_section, pattern="^admin_reports_section$"))
+
+    # Обработчик фотографий активных смен (ДОЛЖЕН БЫТЬ ПЕРЕД общими обработчиками)
+    application.add_handler(CallbackQueryHandler(show_active_shift_photos, pattern="^active_photos_\\d+$"))
 
     # Админские действия
     application.add_handler(CallbackQueryHandler(handle_add_driver, pattern="^add_driver$"))
@@ -358,10 +364,8 @@ def main():
         block_all_media
     ))
 
-    # Добавляем обработчик для показа фото осмотра в чате
-    application.add_handler(CallbackQueryHandler(show_inspection_photos_in_chat, pattern="^show_photos_\\d+$"))
+    # Добавляем обработчик для просмотра фото осмотра
     application.add_handler(CallbackQueryHandler(view_shift_inspection, pattern="^view_inspection_\\d+$"))
-    application.add_handler(CallbackQueryHandler(view_active_shift_inspection, pattern="^shift_photos_\\d+$"))
     application.add_handler(CallbackQueryHandler(view_history_shift_inspection, pattern="^history_photos_\\d+$"))
 
     # Запуск бота
