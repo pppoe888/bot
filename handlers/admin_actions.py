@@ -7,6 +7,12 @@ from states import ADDING_DRIVER, ADDING_LOGIST, ADDING_CAR, EDITING_DRIVER, EDI
 from config import ADMIN_ID
 from datetime import datetime
 
+async def track_admin_message(update, context, message):
+    """Отслеживание сообщений администратора для последующего удаления"""
+    if "admin_message_ids" not in context.chat_data:
+        context.chat_data["admin_message_ids"] = []
+    context.chat_data["admin_message_ids"].append(message.message_id)
+
 # === УПРАВЛЕНИЕ СОТРУДНИКАМИ ===
 
 async def manage_drivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,37 +98,7 @@ async def show_employees_list(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.callback_query.answer()
 
-async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, action_type: str):
-    """Показать список логистов"""
-    await delete_previous_messages(update, context)
 
-    db = SessionLocal()
-    try:
-        logists = db.query(User).filter(User.role == "logist").all()
-
-        if not logists:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="❌ Логисты не найдены!",
-                reply_markup=get_manage_logists_keyboard()
-            )
-            context.user_data["last_message_id"] = message.message_id
-            return
-
-        action_text = "редактирования" if action_type.startswith("edit") else "удаления"
-        text = f"👤 Выберите логиста для {action_text}:"
-
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=get_user_list_keyboard(logists, action_type)
-        )
-        context.user_data["last_message_id"] = message.message_id
-    finally:
-        db.close()
-
-    if update.callback_query:
-        await update.callback_query.answer()
 
 
 async def delete_previous_messages(update, context):
@@ -142,22 +118,7 @@ async def delete_previous_messages(update, context):
     except Exception as e:
         print(f"Ошибка при удалении текущего сообщения: {e}")
 
-async def track_admin_message(update, context, message):
-    """Отслеживает сообщения админки и удаляет старые"""
-    # Удаляем все предыдущие сообщения перед добавлением нового
-    if context.user_data.get("message_history"):
-        for msg_id in context.user_data["message_history"]:
-            try:
-                await context.bot.delete_message(
-                    chat_id=update.effective_chat.id,
-                    message_id=msg_id
-                )
-            except:
-                pass
 
-    # Сохраняем только текущее сообщение
-    context.user_data["message_history"] = [message.message_id]
-    context.user_data["last_message_id"] = message.message_id
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текста в админских состояниях"""
@@ -197,7 +158,7 @@ async def handle_driver_input(update, context, text):
     """Обработка ввода данных водителя"""
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
-    
+
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -258,7 +219,7 @@ async def handle_logist_input(update, context, text):
     """Обработка ввода данных логиста"""
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
-    
+
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -319,7 +280,7 @@ async def handle_car_input(update, context, text):
     """Обработка ввода данных машины"""
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
-    
+
     # Проверяем на отмену
     if text in ["Отменить", "Назад"]:
         message = await context.bot.send_message(
@@ -811,7 +772,6 @@ async def show_logists_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         action_text = "редактирования" if action_type.startswith("edit") else "удаления"
         text = f"📋 Выберите логиста для {action_text}:"
-
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -907,7 +867,7 @@ async def handle_edit_logist_input(update, context, text):
     """Обработка ввода при редактировании логиста"""
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
-    
+
     # Проверяем на отмену
     if text in ["❌ Отменить", "⬅️ Назад"]:
         message = await context.bot.send_message(
@@ -1304,6 +1264,10 @@ async def show_active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE)
             keyboard.append([
                 InlineKeyboardButton(f"❌ Отменить смену {driver.name}", callback_data=f"cancel_shift_{shift.id}")
             ])
+            # Кнопка "Фото осмотра"
+            keyboard.append([
+                InlineKeyboardButton(f"📸 Фото осмотра {driver.name}", callback_data=f"shift_photos_{shift.id}")
+            ])
 
         keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")])
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1504,6 +1468,11 @@ async def shifts_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"📅 {start_time} - {end_time}\n"
                 text += f"⏱️ {duration:.1f} ч\n"
                 text += f"───────────────\n"
+            # Кнопка "Фото осмотра"
+            keyboard = []
+            keyboard.append([
+                InlineKeyboardButton(f"📸 Фото осмотра {driver.name}", callback_data=f"shift_photos_{shift.id}")
+            ])
 
         try:
             await update.callback_query.edit_message_text(
@@ -1653,7 +1622,7 @@ async def employees_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             text += f"👤 {driver.name}\n"
             text += f"   🚛 Смен: {driver_shifts}\n"
-            text += f"   ⏱️ Часов: {total_hours:.1f}\n"
+            text += f"   ⏱️ Часов: {total_hours:.1f} ч\n"
 
         try:
             await update.callback_query.edit_message_text(
@@ -1668,6 +1637,50 @@ async def employees_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await track_admin_message(update, context, message)
 
             context.user_data["last_message_id"] = message.message_id
+    finally:
+        db.close()
+
+    await update.callback_query.answer()
+
+async def shift_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Вывод фото осмотра"""
+    shift_id = int(update.callback_query.data.split("_")[2])
+
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+
+        if not shift:
+            await update.callback_query.answer("❌ Смена не найдена!")
+            return
+
+        driver = shift.driver
+        car = shift.car
+
+        # Получаем все фото осмотра для данной смены
+        photos = shift.photos  # Предполагается, что у Shift есть поле photos
+
+        if not photos:
+            await update.callback_query.answer("❌ Нет фото осмотра для данной смены!")
+            return
+
+        # Формируем сообщение с фото
+        media = []
+        for photo in photos:
+            media.append(InputMediaPhoto(photo))
+
+        await context.bot.send_media_group(
+            chat_id=update.effective_chat.id,
+            media=media
+        )
+
+    except Exception as e:
+        await update.callback_query.edit_message_text(
+            text=f"❌ Ошибка вывода фото: {str(e)}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 К истории смен", callback_data="shifts_history")
+                    ]])
+        )
     finally:
         db.close()
 

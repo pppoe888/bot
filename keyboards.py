@@ -389,6 +389,9 @@ def get_shifts_history_keyboard(shifts):
         date_str = shift.start_time.strftime('%d.%m')
         shift_text = f"{status} {date_str} - {shift.driver.name} - {car_info}"
         keyboard.append([InlineKeyboardButton(shift_text, callback_data=f"view_shift_{shift.id}")])
+        
+        # Добавляем кнопку для просмотра фото осмотра
+        keyboard.append([InlineKeyboardButton(f"📸 Фото осмотра - {shift.driver.name}", callback_data=f"show_photos_{shift.id}")])
     
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_shifts_section")])
     return InlineKeyboardMarkup(keyboard)
@@ -396,11 +399,11 @@ def get_shifts_history_keyboard(shifts):
 def get_shift_details_keyboard(shift_id):
     """Клавиатура деталей смены"""
     keyboard = [
-        [InlineKeyboardButton("📸 Посмотреть осмотр", callback_data=f"view_inspection_{shift_id}")],
+        [InlineKeyboardButton("📸 Фото осмотра", callback_data=f"view_inspection_{shift_id}")],
         [InlineKeyboardButton("🚗 Информация об автомобиле", callback_data=f"view_car_info_{shift_id}")],
         [InlineKeyboardButton("📦 Загруженные товары", callback_data=f"view_cargo_{shift_id}")],
         [InlineKeyboardButton("🚚 Доставленные товары", callback_data=f"view_delivered_{shift_id}")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="admin_shifts_section")]
+        [InlineKeyboardButton("🔙 Назад", callback_data="shifts_history")]
     ]
     return InlineKeyboardMarkup(keyboard)
 

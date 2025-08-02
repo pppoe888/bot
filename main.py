@@ -8,15 +8,17 @@ from handlers.inspection import car_inspection, start_inspection, select_car_for
 from handlers.delivery import delivery_list
 from handlers.admin import (
         admin_panel, admin_cars_section, admin_employees_section, admin_shifts_section, admin_reports_section,
-        employees_stats, shifts_stats, active_shifts, shifts_history, view_shift_details, view_shift_inspection, 
-        view_shift_cargo, view_delivered_items, view_car_info, view_active_shift_inspection, view_active_shift_cargo
+        employees_stats, shifts_stats, view_shift_details, view_shift_inspection, 
+        view_shift_cargo, view_delivered_items, view_car_info, view_active_shift_inspection, view_active_shift_cargo,
+        show_inspection_photos_in_chat
     )
 from handlers.admin_actions import (
+    manage_drivers, manage_logists, manage_cars, show_employees_list,
     handle_add_driver, handle_add_logist, handle_add_car, handle_confirm,
     show_drivers_list, edit_driver, delete_driver, edit_driver_field,
     show_logists_list, edit_logist, delete_logist, edit_logist_field,
     manage_cars, show_cars_list, edit_car, delete_car, edit_car_field,
-    show_active_shifts, end_shift, cancel_shift, shifts_history,
+    show_active_shifts, end_shift, cancel_shift, shifts_history as admin_shifts_history,
     manage_drivers, manage_logists, show_employees_list, handle_admin_text
 )
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
@@ -288,7 +290,7 @@ def main():
     application.add_handler(CallbackQueryHandler(cancel_shift, pattern=r"^cancel_shift_\d+$"))
 
     # История смен
-    application.add_handler(CallbackQueryHandler(shifts_history, pattern="^shifts_history$"))
+    application.add_handler(CallbackQueryHandler(admin_shifts_history, pattern="^shifts_history$"))
 
     # Просмотр деталей смен
     application.add_handler(CallbackQueryHandler(view_shift_details, pattern="^view_shift_\\d+$"))
@@ -298,8 +300,7 @@ def main():
     application.add_handler(CallbackQueryHandler(view_delivered_items, pattern="^view_delivered_\\d+$"))
 
     # Активные смены  
-    application.add_handler(CallbackQueryHandler(active_shifts, pattern="^show_active_shifts$"))
-
+    application.add_handler(CallbackQueryHandler(show_active_shifts, pattern="^active_shifts$"))
 
     # Обработчики для осмотра автомобиля
     application.add_handler(CallbackQueryHandler(car_inspection, pattern="^car_inspection$"))
@@ -357,14 +358,11 @@ def main():
         block_all_media
     ))
 
-    # Добавляем обработчики для просмотра фото и списка товаров в активных сменах
-    application.add_handler(CallbackQueryHandler(view_active_shift_inspection, pattern="^view_inspection_\\d+$"))
-    application.add_handler(CallbackQueryHandler(view_active_shift_cargo, pattern="^view_cargo_\\d+$"))
-    
     # Добавляем обработчик для показа фото осмотра в чате
-    from handlers.admin import show_inspection_photos_in_chat, active_shifts
     application.add_handler(CallbackQueryHandler(show_inspection_photos_in_chat, pattern="^show_photos_\\d+$"))
-    application.add_handler(CallbackQueryHandler(active_shifts, pattern="^active_shifts$"))
+    application.add_handler(CallbackQueryHandler(view_shift_inspection, pattern="^view_inspection_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_active_shift_inspection, pattern="^shift_photos_\\d+$"))
+    application.add_handler(CallbackQueryHandler(view_history_shift_inspection, pattern="^history_photos_\\d+$"))
 
     # Запуск бота
     print("Бот запущен!")

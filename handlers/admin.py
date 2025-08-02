@@ -322,26 +322,37 @@ async def view_shift_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def view_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Просмотр фотографий осмотра смены"""
-    from keyboards import get_back_to_shift_keyboard
-
     query = update.callback_query
     shift_id = int(query.data.split("_")[2])
 
     db = SessionLocal()
     try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
         photos = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == shift_id).all()
 
+        if not shift:
+            await query.answer("Смена не найдена!")
+            return
+
         if not photos:
-            text = "📸 Фотографии осмотра не найдены"
+            text = f"📸 ФОТО ОСМОТРА\n\n"
+            text += f"👤 Водитель: {shift.driver.name}\n"
+            text += f"🚗 Автомобиль: {shift.car.number}\n\n"
+            text += "❌ Фотографии осмотра не найдены"
+
             try:
                 await query.edit_message_text(
                     text=text,
-                    reply_markup=get_back_to_shift_keyboard(shift_id)
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                    ]])
                 )
             except:
                 message = await query.message.reply_text(
                     text=text,
-                    reply_markup=get_back_to_shift_keyboard(shift_id)
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                    ]])
                 )
                 context.user_data["last_message_id"] = message.message_id
         else:
@@ -360,22 +371,38 @@ async def view_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 await query.edit_message_text(
                     text=f"📸 ФОТОГРАФИИ ОСМОТРА (Смена #{shift_id})",
-                    reply_markup=get_back_to_shift_keyboard(shift_id)
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                    ]])
                 )
             except:
                 pass
 
             # Затем отправляем каждое фото с подписью
-            for photo in photos:
+            for i, photo in enumerate(photos, 1):
                 photo_name = photo_names.get(photo.photo_type, photo.photo_type)
                 try:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=photo.file_id,
-                        caption=f"📸 {photo_name}"
+                        caption=f"{photo_name} | 👤 {shift.driver.name} | 🚗 {shift.car.number}\n📊 Фото {i} из {len(photos)}"
                     )
                 except Exception as e:
                     print(f"Ошибка отправки фото: {e}")
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"❌ Ошибка загрузки фото: {photo_name}"
+                    )
+
+            # Отправляем итоговое сообщение
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"✅ Все фотографии осмотра отправлены!\n\n👤 Водитель: {shift.driver.name}\n🚗 Автомобиль: {shift.car.number}\n📸 Всего фото: {len(photos)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                ]])
+            )
+
     finally:
         db.close()
 
@@ -424,19 +451,19 @@ async def view_shift_cargo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Просмотр активных смен"""
-    from keyboards import get_active_shifts_keyboard
+    from keyboards import get_admin_shifts_keyboard
 
     db = SessionLocal()
     try:
-        active_shifts = db.query(Shift).filter(Shift.is_active == True).all()
+        active_shifts_list = db.query(Shift).filter(Shift.is_active == True).all()
 
-        if not active_shifts:
+        if not active_shifts_list:
             text = "📋 Активных смен нет"
             keyboard = get_admin_shifts_keyboard()
         else:
             text = "🚛 АКТИВНЫЕ СМЕНЫ:\n\n"
 
-            for shift in active_shifts:
+            for shift in active_shifts_list:
                 driver = shift.driver
                 car = shift.car
 
@@ -475,7 +502,7 @@ async def active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Создаем клавиатуру с кнопками для каждой активной смены
             keyboard = []
-            for shift in active_shifts:
+            for shift in active_shifts_list:
                 driver_name = shift.driver.name
                 car_number = shift.car.number
 
@@ -505,7 +532,7 @@ async def active_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
 
 async def show_inspection_photos_in_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать фотографии осмотра в чате"""
+    """Показать фотографии осмотра одним сообщением"""
     query = update.callback_query
     shift_id = int(query.data.split("_")[2])
 
@@ -527,7 +554,96 @@ async def show_inspection_photos_in_chat(update: Update, context: ContextTypes.D
             await query.edit_message_text(
                 text=text,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 К активным сменам", callback_data="active_shifts")
+                    InlineKeyboardButton("🔙 Назад", callback_data="show_active_shifts" if shift.is_active else "shifts_history")
+                ]])
+            )
+        else:
+            # Готовим медиагруппу для отправки всех фото одним сообщением
+            from telegram import InputMediaPhoto
+
+            media_group = []
+            photo_names = {
+                'front': '🚗 Передняя часть',
+                'back': '🚙 Задняя часть',
+                'left': '⬅️ Левый борт',
+                'right': '➡️ Правый борт',
+                'oil': '🛢️ Уровень масла',
+                'coolant': '❄️ Охлаждающая жидкость',
+                'interior': '🪑 Салон автомобиля'
+            }
+
+            for i, photo in enumerate(photos):
+                photo_name = photo_names.get(photo.photo_type, photo.photo_type)
+                caption = f"{photo_name}"
+
+                # Первое фото получает полное описание
+                if i == 0:
+                    caption = f"📸 ФОТО ОСМОТРА\n👤 {shift.driver.name} | 🚗 {shift.car.number}\n📅 {shift.start_time.strftime('%d.%m.%Y %H:%M')}\n\n{photo_name}"
+
+                media_group.append(InputMediaPhoto(media=photo.file_id, caption=caption))
+
+            # Сначала отвечаем на callback
+            await query.answer("Отправляю фотографии...")
+
+            # Отправляем медиагруппу
+            try:
+                await context.bot.send_media_group(
+                    chat_id=update.effective_chat.id,
+                    media=media_group
+                )
+
+                # Отправляем сообщение с кнопкой возврата
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"✅ Все фотографии осмотра отправлены!\n📸 Всего фото: {len(photos)}",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад", callback_data="show_active_shifts" if shift.is_active else "shifts_history")
+                    ]])
+                )
+
+            except Exception as e:
+                print(f"Ошибка отправки медиагруппы: {e}")
+                # Если медиагруппа не работает, отправляем по одному фото
+                for i, photo in enumerate(photos, 1):
+                    photo_name = photo_names.get(photo.photo_type, photo.photo_type)
+                    try:
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=photo.file_id,
+                            caption=f"📸 {photo_name}\n👤 {shift.driver.name} | 🚗 {shift.car.number}\n📊 Фото {i} из {len(photos)}"
+                        )
+                    except Exception as photo_error:
+                        print(f"Ошибка отправки фото: {photo_error}")
+
+    finally:
+        db.close()
+
+    await query.answer()
+
+async def view_history_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Просмотр фотографий осмотра из истории смен"""
+    query = update.callback_query
+    shift_id = int(query.data.split("_")[3])
+
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        photos = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == shift_id).all()
+
+        if not shift:
+            await query.answer("Смена не найдена!")
+            return
+
+        if not photos:
+            text = f"📸 ФОТО ОСМОТРА\n\n"
+            text += f"👤 Водитель: {shift.driver.name}\n"
+            text += f"🚗 Автомобиль: {shift.car.number}\n\n"
+            text += "❌ Фотографии осмотра не найдены"
+
+            await query.edit_message_text(
+                text=text,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 К истории смен", callback_data="shifts_history")
                 ]])
             )
         else:
@@ -585,7 +701,7 @@ async def show_inspection_photos_in_chat(update: Update, context: ContextTypes.D
 async def view_active_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Просмотр фотографий осмотра активной смены"""
     query = update.callback_query
-    shift_id = int(query.data.split("_")[2])
+    shift_id = int(query.data.split("_")[3])
 
     db = SessionLocal()
     try:
@@ -605,7 +721,7 @@ async def view_active_shift_inspection(update: Update, context: ContextTypes.DEF
             await query.edit_message_text(
                 text=text,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 К активным сменам", callback_data="active_shifts")
+                    InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts")
                 ]])
             )
         else:
@@ -614,36 +730,47 @@ async def view_active_shift_inspection(update: Update, context: ContextTypes.DEF
             text += f"👤 Водитель: {shift.driver.name}\n"
             text += f"🚗 Автомобиль: {shift.car.number}\n"
             text += f"📅 Время начала: {shift.start_time.strftime('%d.%m.%Y %H:%M')}\n\n"
-            text += f"Найдено фотографий: {len(photos)}"
+            text += f"📸 Отправляю {len(photos)} фотографий в чат..."
 
             await query.edit_message_text(
                 text=text,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 К активным сменам", callback_data="active_shifts")
+                    InlineKeyboardButton("🔙 К активным сменам", callback_data="show_active_shifts")
                 ]])
             )
 
-            # Отправляем каждое фото
+            # Отправляем каждое фото отдельно
             photo_names = {
-                'front': '🚗 Спереди',
-                'back': '🚙 Сзади', 
+                'front': '🚗 Передняя часть',
+                'back': '🚙 Задняя часть', 
                 'left': '⬅️ Левый борт',
                 'right': '➡️ Правый борт',
                 'oil': '🛢️ Уровень масла',
                 'coolant': '❄️ Охлаждающая жидкость',
-                'interior': '🪑 Салон'
+                'interior': '🪑 Салон автомобиля'
             }
 
-            for photo in photos:
+            for i, photo in enumerate(photos, 1):
                 photo_name = photo_names.get(photo.photo_type, photo.photo_type)
                 try:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=photo.file_id,
-                        caption=f"📸 {photo_name}\n👤 {shift.driver.name} | 🚗 {shift.car.number}"
+                        caption=f"📸 {photo_name}\n👤 {shift.driver.name} | 🚗 {shift.car.number}\n📊 Фото {i} из {len(photos)}"
                     )
                 except Exception as e:
                     print(f"Ошибка отправки фото: {e}")
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"❌ Ошибка загрузки фото: {photo_name}"
+                    )
+
+            # Отправляем итоговое сообщение
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"✅ Все фотографии осмотра отправлены!\n\n👤 Водитель: {shift.driver.name}\n🚗 Автомобиль: {shift.car.number}\n📸 Всего фото: {len(photos)}"
+            )
+
     finally:
         db.close()
 
