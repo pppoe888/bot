@@ -49,13 +49,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Отправляем приветственное сообщение с соответствующим меню
             if user_role == "driver":
-                from keyboards import get_driver_dialog_keyboard
-                keyboard = get_driver_dialog_keyboard()
-                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как водитель."
+                from keyboards import get_driver_menu
+                keyboard = get_driver_menu()
+                text = f"Добро пожаловать, {user_name}!\n\nВыберите действие:"
             elif user_role == "logist":
-                from keyboards import get_logist_dialog_keyboard
-                keyboard = get_logist_dialog_keyboard()
-                text = f"Добро пожаловать, {user_name}!\n\nВы автоматически авторизованы как логист.\n\nВыберите действие:"
+                from keyboards import get_logist_menu
+                keyboard = get_logist_menu()
+                text = f"Добро пожаловать, {user_name}!\n\nВыберите действие:"
             else:
                 keyboard = get_role_selection()
                 text = "Выберите вашу роль:"
@@ -68,6 +68,53 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.clear()
             context.user_data["last_message_id"] = message.message_id
             return
+
+        # Дополнительная проверка - может пользователь есть в базе, но не привязан к telegram_id
+        username = update.effective_user.first_name or "Пользователь"
+        if update.effective_user.last_name:
+            username += f" {update.effective_user.last_name}"
+
+        # Ищем пользователя по имени (для диагностики)
+        users_by_name = db.query(User).filter(User.name.like(f"%{username.split()[0]}%")).all()
+
+        if users_by_name:
+            # Найдены пользователи с похожим именем - возможно нужна привязка
+            unlinked_users = [u for u in users_by_name if not u.telegram_id]
+            if unlinked_users:
+                text = f"👋 {username}!\n\n"
+                text += f"Найдены непривязанные аккаунты:\n"
+                for u in unlinked_users:
+                    text += f"• {u.name} ({u.role})\n"
+                text += f"\n💡 Для привязки аккаунта поделитесь контактом:"
+
+                # Автоматически переходим к запросу контакта
+                from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+
+                contact_keyboard = ReplyKeyboardMarkup(
+                    [[KeyboardButton("📞 Поделиться контактом", request_contact=True)]],
+                    resize_keyboard=True,
+                    one_time_keyboard=True
+                )
+
+                inline_keyboard = [
+                    [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
+                ]
+                inline_reply_markup = InlineKeyboardMarkup(inline_keyboard)
+
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text,
+                    reply_markup=inline_reply_markup
+                )
+                context.user_data["last_message_id"] = message.message_id
+
+                contact_message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="👇 Нажмите кнопку для отправки контакта:",
+                    reply_markup=contact_keyboard
+                )
+                context.user_data["contact_message_id"] = contact_message.message_id
+                return
 
     finally:
         db.close()
@@ -325,6 +372,31 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         if not users_by_phone:
+            # Подробная диагностика для администратора
+            from config import ADMIN_ID
+            if user_id == ADMIN_ID:
+                try:
+                    # Отправляем детальную информацию администратору
+                    debug_text = f"🔍 ДИАГНОСТИКА АВТОРИЗАЦИИ\n\n"
+                    debug_text += f"Номер телефона: {phone}\n"
+                    debug_text += f"Нормализованный: {phone_digits}\n"
+                    debug_text += f"Telegram ID: {user_id}\n\n"
+
+                    # Показываем все номера в базе для сравнения
+                    all_users = db.query(User).all()
+                    debug_text += f"Всего пользователей в базе: {len(all_users)}\n\n"
+                    debug_text += "Номера в базе:\n"
+                    for u in all_users[:10]:  # Показываем первые 10
+                        u_phone_digits = ''.join(filter(str.isdigit, u.phone))
+                        debug_text += f"• {u.name}: {u.phone} ({u_phone_digits})\n"
+
+                    await context.bot.send_message(
+                        chat_id=ADMIN_ID,
+                        text=debug_text
+                    )
+                except:
+                    pass
+
             # Пользователь не найден - обратиться к администратору
             from telegram import InlineKeyboardMarkup, InlineKeyboardButton
             keyboard = [
@@ -367,6 +439,17 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             context.user_data["last_message_id"] = message.message_id
             context.user_data["users_by_phone"] = {str(user.id): user for user in users_by_phone}
+
+            # Сохраняем telegram_id для всех найденных пользователей с этим номером
+            for user in users_by_phone:
+                if user.telegram_id != user_id:
+                    # Убираем telegram_id у других пользователей с таким же ID
+                    existing_user = db.query(User).filter(User.telegram_id == user_id).first()
+                    if existing_user and existing_user.id != user.id:
+                        existing_user.telegram_id = None
+
+                    user.telegram_id = user_id
+            db.commit()
 
     finally:
         db.close()
@@ -442,26 +525,32 @@ async def authorize_user(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     try:
         # Обновляем telegram_id если нужно
         if user.telegram_id != user_id:
+            # Убираем telegram_id у других пользователей с таким же telegram_id
             existing_user = db.query(User).filter(User.telegram_id == user_id).first()
             if existing_user and existing_user.id != user.id:
                 existing_user.telegram_id = None
                 db.commit()
 
+            # Устанавливаем telegram_id для текущего пользователя
             user.telegram_id = user_id
             db.commit()
+
+            # Логируем успешное сохранение
+            print(f"✅ Telegram ID {user_id} сохранен для пользователя {user.name} (ID: {user.id})")
 
         user_name = user.name
         user_role = user.role
 
         # Отправляем приветственное сообщение
         if user_role == "driver":
-            from keyboards import get_driver_dialog_keyboard
-            keyboard = get_driver_dialog_keyboard()
-            text = f"Добро пожаловать, {user_name}!"
+            from handlers.driver import show_driver_menu
+            context.user_data.clear()
+            await show_driver_menu(update, context, user_name)
+            return
         elif user_role == "logist":
-            from keyboards import get_logist_dialog_keyboard
-            keyboard = get_logist_dialog_keyboard()
-            text = f"Добро пожаловать, {user_name}!\n\nВы успешно авторизованы как логист.\n\nВыберите действие:"
+            from keyboards import get_logist_menu
+            keyboard = get_logist_menu()
+            text = f"Добро пожаловать, {user_name}!\n\nВыберите действие:"
         else:
             keyboard = get_role_selection()
             text = "Выберите вашу роль:"
@@ -741,4 +830,23 @@ async def handle_multi_role_selection(update: Update, context: ContextTypes.DEFA
 
         if user_id_str in users_by_phone:
             selected_user = users_by_phone[user_id_str]
-            await authorize_user(update, context, selected_user, update.effective_user.id)
+            telegram_id = update.effective_user.id
+
+            # Сохраняем telegram_id сразу при выборе роли
+            db = SessionLocal()
+            try:
+                # Убираем telegram_id у других пользователей с таким же telegram_id
+                existing_user = db.query(User).filter(User.telegram_id == telegram_id).first()
+                if existing_user and existing_user.id != selected_user.id:
+                    existing_user.telegram_id = None
+                    db.commit()
+
+                # Устанавливаем telegram_id для выбранного пользователя
+                selected_user.telegram_id = telegram_id
+                db.commit()
+
+                print(f"✅ Telegram ID {telegram_id} сохранен для выбранного пользователя {selected_user.name} (ID: {selected_user.id})")
+            finally:
+                db.close()
+
+            await authorize_user(update, context, selected_user, telegram_id)

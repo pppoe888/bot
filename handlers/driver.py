@@ -1,7 +1,8 @@
+
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
-from database import SessionLocal, User, Car, Shift
-from keyboards import get_driver_dialog_keyboard, get_problem_keyboard
+from database import SessionLocal, User, Car, Shift, ShiftPhoto
+from keyboards import get_driver_menu, get_problem_keyboard
 from datetime import datetime
 import states
 
@@ -18,8 +19,63 @@ async def delete_previous_messages(update, context):
     except:
         pass
 
-async def auto_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup, delete_after: int = None):
-    """Отправляет сообщение и автоматически удаляет его через заданное время (в секундах)"""
+async def driver_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Стартовое меню водителя"""
+    user_id = update.effective_user.id
+    
+    # Проверяем авторизацию
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id, User.role == "driver").first()
+        if not user:
+            # Пользователь не авторизован - просим поделиться контактом
+            await request_contact(update, context)
+            return
+            
+        # Пользователь авторизован - показываем меню
+        await show_driver_menu(update, context, user.name)
+        
+    finally:
+        db.close()
+
+async def request_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запрос контакта для авторизации"""
+    from telegram import ReplyKeyboardMarkup, KeyboardButton
+    
+    await delete_previous_messages(update, context)
+    
+    text = "👋 Добро пожаловать!\n\n"
+    text += "Для работы с системой необходимо авторизоваться.\n"
+    text += "Поделитесь контактом для входа в систему."
+    
+    # Создаем клавиатуру с кнопкой контакта
+    contact_keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("📞 Поделиться контактом", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    
+    message = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text,
+        reply_markup=contact_keyboard
+    )
+    context.user_data["last_message_id"] = message.message_id
+
+async def show_driver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user_name: str):
+    """Показать основное меню водителя"""
+    await delete_previous_messages(update, context)
+    
+    text = f"👋 Добро пожаловать, {user_name}!\n\n"
+    text += "Выберите действие:"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔍 Осмотр автомобиля", callback_data="car_inspection")],
+        [InlineKeyboardButton("⚠️ Сообщить о проблеме", callback_data="report_problem")],
+        [InlineKeyboardButton("📊 Мои смены", callback_data="my_shifts")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text,
@@ -27,73 +83,48 @@ async def auto_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     context.user_data["last_message_id"] = message.message_id
 
-    if delete_after:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message.message_id)
-        # async def delete_message(context: ContextTypes.DEFAULT_TYPE):
-        #     try:
-        #         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message.message_id)
-        #     except:
-        #         pass
-        # context.job_queue.run_once(delete_message, delete_after)
-
-
-async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начать смену"""
-    await delete_previous_messages(update, context)
-
+async def car_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало осмотра автомобиля"""
+    query = update.callback_query
+    await query.answer()
+    
     user_id = update.effective_user.id
     db = SessionLocal()
-
+    
     try:
-        # Проверяем, есть ли уже активная смена
-        user = db.query(User).filter(User.telegram_id == user_id).first()
+        user = db.query(User).filter(User.telegram_id == user_id, User.role == "driver").first()
         if not user:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Пользователь не найден!"
-            )
-            context.user_data["last_message_id"] = message.message_id
+            await query.edit_message_text("❌ Ошибка авторизации!")
             return
-
+            
+        # Проверяем активную смену
         active_shift = db.query(Shift).filter(
             Shift.driver_id == user.id,
             Shift.is_active == True
         ).first()
-
+        
         if active_shift:
-            # Получаем информацию о машине из активной смены
-            car = active_shift.car
-            car_info = car.number
-            if car.brand:
-                car_info += f" ({car.brand}"
-                if car.model:
-                    car_info += f" {car.model}"
-                car_info += ")"
-
-            start_time = active_shift.start_time.strftime('%H:%M')
-
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"У вас уже есть активная смена!\n\nАвтомобиль: {car_info}\nВремя начала: {start_time}",
-                reply_markup=get_shift_start_keyboard()
-            )
-            context.user_data["last_message_id"] = message.message_id
+            text = "⚠️ У вас уже есть активная смена!\n\n"
+            text += "Завершите текущую смену перед новым осмотром."
+            
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+            await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
             return
-
-        # Получаем список свободных машин
-        busy_car_ids = db.query(Shift.car_id).filter(Shift.is_active == True).subquery()
-        available_cars = db.query(Car).filter(Car.id.notin_(busy_car_ids)).all()
-
+            
+        # Получаем свободные автомобили
+        busy_car_ids = db.query(Shift.car_id).filter(Shift.is_active == True).all()
+        busy_ids = [car_id[0] for car_id in busy_car_ids]
+        available_cars = db.query(Car).filter(~Car.id.in_(busy_ids)).all()
+        
         if not available_cars:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Нет свободных автомобилей!",
-                reply_markup=get_shift_start_keyboard()
-            )
-            context.user_data["last_message_id"] = message.message_id
+            text = "❌ Нет свободных автомобилей!"
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+            await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
             return
-
-        # Создаем клавиатуру с доступными машинами
+            
+        # Показываем список автомобилей
+        text = "🚗 Выберите автомобиль для осмотра:\n\n"
+        
         keyboard = []
         for car in available_cars:
             car_name = car.number
@@ -103,306 +134,366 @@ async def start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     car_name += f" {car.model}"
                 car_name += ")"
             keyboard.append([InlineKeyboardButton(car_name, callback_data=f"select_car_{car.id}")])
-
-        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        message = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Выберите автомобиль:",
-            reply_markup=reply_markup
-        )
-        context.user_data["last_message_id"] = message.message_id
-
+            
+        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+        await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+        
     finally:
         db.close()
 
-async def select_car(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор автомобиля"""
+async def select_car_for_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор автомобиля для осмотра"""
     query = update.callback_query
+    await query.answer()
+    
     car_id = int(query.data.split("_")[2])
-
+    user_id = update.effective_user.id
+    
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        user = db.query(User).filter(User.telegram_id == user_id, User.role == "driver").first()
         car = db.query(Car).filter(Car.id == car_id).first()
-
+        
         if not user or not car:
-            await query.answer("Ошибка: пользователь или автомобиль не найден!")
+            await query.edit_message_text("❌ Ошибка: пользователь или автомобиль не найден!")
             return
-
-        # Проверяем, что машина все еще свободна
+            
+        # Проверяем, что машина еще свободна
         existing_shift = db.query(Shift).filter(
             Shift.car_id == car_id,
             Shift.is_active == True
         ).first()
-
+        
         if existing_shift:
-            await query.answer("Автомобиль уже занят!")
+            await query.edit_message_text("❌ Автомобиль уже занят!")
             return
-
-        # Создаем новую смену
-        new_shift = Shift(
+            
+        # Создаем временную смену для осмотра
+        temp_shift = Shift(
             driver_id=user.id,
             car_id=car_id,
             start_time=datetime.now(),
-            is_active=True
+            is_active=False  # Неактивная до завершения осмотра
         )
-
-        db.add(new_shift)
+        
+        db.add(temp_shift)
         db.commit()
-
+        
+        # Сохраняем данные для фотосессии
+        context.user_data["inspection_shift_id"] = temp_shift.id
+        context.user_data["inspection_car_id"] = car_id
+        context.user_data["current_photo_step"] = "front"
+        
         car_info = car.number
         if car.brand:
             car_info += f" ({car.brand}"
             if car.model:
                 car_info += f" {car.model}"
             car_info += ")"
-
-        await query.edit_message_text(
-            text=f"Смена начата!\n\nАвтомобиль: {car_info}\nВремя начала: {new_shift.start_time.strftime('%H:%M')}",
-            reply_markup=get_shift_start_keyboard()
-        )
-
-    except Exception as e:
-        await query.answer(f"Ошибка: {str(e)}")
+            
+        text = f"📸 ОСМОТР АВТОМОБИЛЯ\n\n"
+        text += f"🚗 Автомобиль: {car_info}\n\n"
+        text += "Необходимо сделать фотографии:\n"
+        text += "1️⃣ Передняя часть\n"
+        text += "2️⃣ Задняя часть\n"
+        text += "3️⃣ Левый борт\n"
+        text += "4️⃣ Правый борт\n"
+        text += "5️⃣ Уровень масла\n"
+        text += "6️⃣ Уровень антифриза\n"
+        text += "7️⃣ Салон автомобиля\n\n"
+        text += "📷 Сделайте фото ПЕРЕДНЕЙ части автомобиля"
+        
+        await query.edit_message_text(text=text)
+        
     finally:
         db.close()
 
-    await query.answer()
+async def handle_inspection_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка фотографий при осмотре"""
+    if not update.message or not update.message.photo:
+        return False
+        
+    shift_id = context.user_data.get("inspection_shift_id")
+    current_step = context.user_data.get("current_photo_step")
+    
+    if not shift_id or not current_step:
+        return False
+        
+    # Сохраняем фото в базу данных
+    photo = update.message.photo[-1]  # Берем фото наибольшего размера
+    
+    db = SessionLocal()
+    try:
+        # Создаем запись фото в базе
+        shift_photo = ShiftPhoto(
+            shift_id=shift_id,
+            photo_type=current_step,
+            file_id=photo.file_id
+        )
+        
+        db.add(shift_photo)
+        db.commit()
+        
+        # Удаляем сообщение с фото
+        try:
+            await update.message.delete()
+        except:
+            pass
+            
+        # Определяем следующий шаг
+        photo_steps = {
+            "front": ("back", "📷 Сделайте фото ЗАДНЕЙ части автомобиля"),
+            "back": ("left", "📷 Сделайте фото ЛЕВОГО борта автомобиля"),
+            "left": ("right", "📷 Сделайте фото ПРАВОГО борта автомобиля"),
+            "right": ("oil", "📷 Сделайте фото уровня МАСЛА"),
+            "oil": ("coolant", "📷 Сделайте фото уровня АНТИФРИЗА"),
+            "coolant": ("interior", "📷 Сделайте фото САЛОНА автомобиля"),
+            "interior": (None, "")
+        }
+        
+        next_step, next_text = photo_steps.get(current_step, (None, ""))
+        
+        if next_step:
+            # Переходим к следующему фото
+            context.user_data["current_photo_step"] = next_step
+            
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"✅ Фото сохранено!\n\n{next_text}"
+            )
+            context.user_data["last_message_id"] = message.message_id
+        else:
+            # Все фото получены - завершаем осмотр
+            await complete_inspection(update, context)
+            
+    except Exception as e:
+        print(f"Ошибка сохранения фото: {e}")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="❌ Ошибка сохранения фото. Попробуйте еще раз."
+        )
+    finally:
+        db.close()
+        
+    return True
 
-async def show_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать маршрут"""
-    await delete_previous_messages(update, context)
-
-    text = "Маршрут\n\nФункция в разработке"
-
-    message = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text
-    )
-    context.user_data["last_message_id"] = message.message_id
+async def complete_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Завершение осмотра автомобиля"""
+    shift_id = context.user_data.get("inspection_shift_id")
+    
+    if not shift_id:
+        return
+        
+    db = SessionLocal()
+    try:
+        # Активируем смену
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        if shift:
+            shift.is_active = True
+            shift.start_time = datetime.now()
+            db.commit()
+            
+            car_info = shift.car.number
+            if shift.car.brand:
+                car_info += f" ({shift.car.brand"
+                if shift.car.model:
+                    car_info += f" {shift.car.model}"
+                car_info += ")"
+                
+            text = "✅ ОСМОТР ЗАВЕРШЕН!\n\n"
+            text += f"🚗 Автомобиль: {car_info}\n"
+            text += f"⏰ Смена начата: {shift.start_time.strftime('%H:%M')}\n\n"
+            text += "Все фотографии сохранены в системе.\n"
+            text += "Можете приступать к работе!"
+            
+            # Отправляем уведомление администратору
+            from config import ADMIN_ID
+            try:
+                admin_text = f"🚗 НОВАЯ СМЕНА НАЧАТА\n\n"
+                admin_text += f"👤 Водитель: {shift.driver.name}\n"
+                admin_text += f"🚗 Автомобиль: {car_info}\n"
+                admin_text += f"⏰ Время: {shift.start_time.strftime('%d.%m.%Y %H:%M')}\n"
+                admin_text += f"📸 Фото осмотра: Сохранены"
+                
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_text)
+            except:
+                pass
+                
+            keyboard = [[InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu")]]
+            message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            context.user_data["last_message_id"] = message.message_id
+            
+            # Очищаем временные данные
+            context.user_data.pop("inspection_shift_id", None)
+            context.user_data.pop("inspection_car_id", None)
+            context.user_data.pop("current_photo_step", None)
+            
+    finally:
+        db.close()
 
 async def report_problem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сообщить о проблеме"""
-    await delete_previous_messages(update, context)
-
-    text = "Выберите тип проблемы:"
-
-    message = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text,
-        reply_markup=get_problem_keyboard()
-    )
-    context.user_data["last_message_id"] = message.message_id
+    query = update.callback_query
+    await query.answer()
+    
+    text = "⚠️ Выберите тип проблемы:"
+    
+    keyboard = [
+        [InlineKeyboardButton("🚗 Проблема с машиной", callback_data="problem_car")],
+        [InlineKeyboardButton("📦 Проблема с грузом", callback_data="problem_cargo")],
+        [InlineKeyboardButton("🛣️ Проблема на дороге", callback_data="problem_road")],
+        [InlineKeyboardButton("📍 Проблема в точке доставки", callback_data="problem_delivery")],
+        [InlineKeyboardButton("❓ Другая проблема", callback_data="problem_other")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+    ]
+    
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_problem_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка выбора типа проблемы"""
     query = update.callback_query
+    await query.answer()
+    
     problem_type = query.data.split("_")[1]
-
+    
     problem_types = {
         "car": "Проблема с машиной",
-        "cargo": "Проблема с грузом", 
-        "road": "Проблема на дороге",
+        "cargo": "Проблема с грузом",
+        "road": "Проблема на дороге", 
         "delivery": "Проблема в точке доставки",
         "other": "Другая проблема"
     }
-
+    
     selected_type = problem_types.get(problem_type, "Другая проблема")
-
-    text = f"Тип проблемы: {selected_type}\n\n"
+    
+    text = f"⚠️ Тип проблемы: {selected_type}\n\n"
     text += "Опишите проблему подробно. Ваше сообщение будет отправлено диспетчеру."
-
+    
     await query.edit_message_text(text=text)
-
+    
     # Сохраняем тип проблемы для дальнейшей обработки
     context.user_data["problem_type"] = selected_type
     context.user_data["awaiting_problem_description"] = True
-
-    await query.answer()
 
 async def handle_problem_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка описания проблемы"""
     if not context.user_data.get("awaiting_problem_description"):
         return False
-
+        
     problem_type = context.user_data.get("problem_type", "Другая проблема")
     description = update.message.text
-
+    
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-
-        # Здесь можно сохранить проблему в базу данных
-        # или отправить уведомление администратору/диспетчеру
-
+        
         await update.message.delete()
-
-        text = f"Сообщение о проблеме отправлено!\n\n"
-        text += f"Тип: {problem_type}\n"
-        text += f"Описание: {description}\n\n"
-        text += f"Водитель: {user.name if user else 'Неизвестен'}\n"
-        text += f"Время: {datetime.now().strftime('%H:%M')}\n\n"
+        
+        text = f"✅ Сообщение о проблеме отправлено!\n\n"
+        text += f"📋 Тип: {problem_type}\n"
+        text += f"📝 Описание: {description}\n\n"
+        text += f"👤 Водитель: {user.name if user else 'Неизвестен'}\n"
+        text += f"⏰ Время: {datetime.now().strftime('%H:%M')}\n\n"
         text += "Диспетчер свяжется с вами в ближайшее время."
-
-        # Отправляем уведомление администратору (можно добавить отдельную логику)
-        from config import ADMIN_ID
-        try:
-            admin_text = f"НОВАЯ ПРОБЛЕМА ОТ ВОДИТЕЛЯ\n\n"
-            admin_text += f"Водитель: {user.name if user else 'Неизвестен'}\n"
-            admin_text += f"Телефон: {user.phone if user else 'Неизвестен'}\n"
-            admin_text += f"Тип: {problem_type}\n"
-            admin_text += f"Описание: {description}\n"
-            admin_text += f"Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=admin_text
-            )
-        except:
-            pass
-
-        await auto_delete_message(
-            update, context,
-            text,
-            get_driver_dialog_keyboard(),
-            delete_after=None
-        )
-
-        # Очищаем временные данные
-        context.user_data.pop("problem_type", None)
-        context.user_data.pop("awaiting_problem_description", None)
-
-        return True
-
-    finally:
-        db.close()
-
-async def handle_shift_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка фотографий при начале смены"""
-    if not update.message or not update.message.photo:
-        return False
-
-    current_state = context.user_data.get("state")
-    photo_states = [
-        states.PHOTO_CAR_FRONT, states.PHOTO_CAR_BACK, 
-        states.PHOTO_CAR_LEFT, states.PHOTO_CAR_RIGHT,
-        states.PHOTO_COOLANT, states.PHOTO_OIL, states.PHOTO_INTERIOR
-    ]
-
-    if current_state not in photo_states:
-        return False
-
-    # Сохраняем фото
-    photo = update.message.photo[-1]  # Берем фото наибольшего размера
-    context.user_data["shift_photos"][current_state] = photo.file_id
-
-    # Удаляем сообщение с фото
-    try:
-        await update.message.delete()
-    except:
-        pass
-
-    # Определяем следующий шаг
-    next_step_map = {
-        states.PHOTO_CAR_FRONT: (states.PHOTO_CAR_BACK, "Сделайте фото ЗАДНЕЙ части автомобиля"),
-        states.PHOTO_CAR_BACK: (states.PHOTO_CAR_LEFT, "Сделайте фото ЛЕВОЙ стороны автомобиля"),
-        states.PHOTO_CAR_LEFT: (states.PHOTO_CAR_RIGHT, "Сделайте фото ПРАВОЙ стороны автомобиля"),
-        states.PHOTO_CAR_RIGHT: (states.PHOTO_COOLANT, "Сделайте фото уровня ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ"),
-        states.PHOTO_COOLANT: (states.PHOTO_OIL, "Сделайте фото уровня МАСЛА"),
-        states.PHOTO_OIL: (states.PHOTO_INTERIOR, "Сделайте фото САЛОНА автомобиля"),
-        states.PHOTO_INTERIOR: (None, "")
-    }
-
-    next_state, next_text = next_step_map[current_state]
-
-    if next_state:
-        # Переходим к следующему фото
-        context.user_data["state"] = next_state
-
-        try:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"Фото принято!\n\n{next_text}\n\nНАПОМИНАНИЕ:\n• ТОЛЬКО камера телефона\n• Съемка в реальном времени\n• Высокое качество\n\nФото из галереи и скриншоты ЗАПРЕЩЕНЫ!"
-            )
-            context.user_data["last_message_id"] = message.message_id
-        except:
-            pass
-    else:
-        # Все фото получены, создаем смену
-        await create_shift_with_photos(update, context)
-
-    return True
-
-async def create_shift_without_photos(update: Update, context: ContextTypes.DEFAULT_TYPE, car_id: int, user_id: int):
-    """Создание смены без фотографий"""
-
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.telegram_id == user_id).first()
-        car = db.query(Car).filter(Car.id == car_id).first()
-
-        if not user or not car:
-            await auto_delete_message(
-            update, context,
-            "Ошибка создания смены!",
-            get_driver_dialog_keyboard(),
-            delete_after=5
-        )
-            return
-
-        # Создаём новую смену
-        new_shift = Shift(
-            driver_id=user.id,
-            car_id=car.id,
-            start_time=datetime.now(),
-            is_active=True
-        )
-
-        db.add(new_shift)
-        db.commit()
-
-        car_text = f"{car.number}"
-        if car.brand:
-            car_text += f" ({car.brand}"
-            if car.model:
-                car_text += f" {car.model}"
-            car_text += ")"
-
-        text = f"Смена успешно начата!\n\n"
-        text += f"Автомобиль: {car_text}\n"
-        text += f"Время начала: {new_shift.start_time.strftime('%H:%M')}\n\n"
-        text += "Можете приступать к работе!"
-
+        
         # Отправляем уведомление администратору
         from config import ADMIN_ID
         try:
-            admin_text = f"НОВАЯ СМЕНА НАЧАТА\n\n"
-            admin_text += f"Водитель: {user.name}\n"
-            admin_text += f"Автомобиль: {car_text}\n"
-            admin_text += f"Время: {new_shift.start_time.strftime('%d.%m.%Y %H:%M')}"
-
+            admin_text = f"🚨 НОВАЯ ПРОБЛЕМА ОТ ВОДИТЕЛЯ\n\n"
+            admin_text += f"👤 Водитель: {user.name if user else 'Неизвестен'}\n"
+            admin_text += f"📱 Телефон: {user.phone if user else 'Неизвестен'}\n"
+            admin_text += f"📋 Тип: {problem_type}\n"
+            admin_text += f"📝 Описание: {description}\n"
+            admin_text += f"⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            
             await context.bot.send_message(chat_id=ADMIN_ID, text=admin_text)
         except:
             pass
-
-        await auto_delete_message(
-            update, context,
-            text,
-            get_driver_dialog_keyboard(),
-            delete_after=None
+            
+        keyboard = [[InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu")]]
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
+        context.user_data["last_message_id"] = message.message_id
+        
         # Очищаем временные данные
-        context.user_data.clear()
+        context.user_data.pop("problem_type", None)
+        context.user_data.pop("awaiting_problem_description", None)
+        
+        return True
+        
+    finally:
+        db.close()
 
-    except Exception as e:
-        await auto_delete_message(
-            update, context,
-            f"Ошибка создания смены: {str(e)}",
-            get_driver_dialog_keyboard(),
-            delete_after=5
-        )
+async def my_shifts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать мои смены"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    db = SessionLocal()
+    
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id, User.role == "driver").first()
+        if not user:
+            await query.edit_message_text("❌ Ошибка авторизации!")
+            return
+            
+        # Получаем смены пользователя
+        shifts = db.query(Shift).filter(Shift.driver_id == user.id).order_by(Shift.start_time.desc()).limit(10).all()
+        
+        if not shifts:
+            text = "📊 У вас пока нет смен"
+        else:
+            text = "📊 МОИ СМЕНЫ\n\n"
+            
+            for shift in shifts:
+                car_info = shift.car.number
+                if shift.car.brand:
+                    car_info += f" ({shift.car.brand})"
+                    
+                status = "🟢 Активна" if shift.is_active else "🔴 Завершена"
+                start_time = shift.start_time.strftime('%d.%m %H:%M')
+                
+                text += f"🚗 {car_info}\n"
+                text += f"📅 {start_time}\n"
+                text += f"📊 {status}\n"
+                
+                if not shift.is_active and shift.end_time:
+                    end_time = shift.end_time.strftime('%d.%m %H:%M')
+                    duration = (shift.end_time - shift.start_time).total_seconds() / 3600
+                    text += f"🏁 {end_time}\n"
+                    text += f"⏱️ {duration:.1f} ч\n"
+                    
+                text += "───────────────\n"
+                
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+        await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    finally:
+        db.close()
+
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    db = SessionLocal()
+    
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id, User.role == "driver").first()
+        if not user:
+            await request_contact(update, context)
+            return
+            
+        await show_driver_menu(update, context, user.name)
+        
     finally:
         db.close()

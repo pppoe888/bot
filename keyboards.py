@@ -33,12 +33,14 @@ def get_contact_inline_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_admin_inline_keyboard():
-    """Главная админ клавиатура"""
+    """Клавиатура админа"""
     keyboard = [
-        [InlineKeyboardButton("Автомобили", callback_data="admin_cars_section")],
         [InlineKeyboardButton("Сотрудники", callback_data="admin_employees_section")],
+        [InlineKeyboardButton("Автомобили", callback_data="admin_cars_section")],
         [InlineKeyboardButton("Смены", callback_data="admin_shifts_section")],
-        [InlineKeyboardButton("Отчеты", callback_data="admin_reports_section")]
+        [InlineKeyboardButton("Сообщения", callback_data="admin_messages_section")],
+        [InlineKeyboardButton("🔍 Диагностика", callback_data="find_user_by_name")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_start")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -197,6 +199,24 @@ def get_car_list_keyboard(cars, action_type):
     """Клавиатура со списком автомобилей"""
     keyboard = []
 
+
+
+def get_shift_details_keyboard(shift_id):
+    """Клавиатура для деталей смены"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📸 Фото осмотра", callback_data=f"view_photos_{shift_id}"),
+            InlineKeyboardButton("📋 Инфо о фото", callback_data=f"photos_info_{shift_id}")
+        ],
+        [
+            InlineKeyboardButton("🚗 Автомобиль", callback_data=f"view_car_info_{shift_id}"),
+            InlineKeyboardButton("📦 Товары", callback_data=f"view_cargo_{shift_id}")
+        ],
+        [
+            InlineKeyboardButton("🔙 Назад", callback_data="shifts_history")
+        ]
+    ])
+
     for car in cars:
         car_name = car.number
         if car.brand:
@@ -281,22 +301,48 @@ def get_cancel_write_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_driver_dialog_keyboard():
-    """Диалоговая клавиатура водителя"""
+    """Клавиатура для водителя с кнопкой назад"""
     keyboard = [
+        [InlineKeyboardButton("🚗 Начать смену", callback_data="start_shift")],
         [InlineKeyboardButton("🔍 Осмотр автомобиля", callback_data="car_inspection")],
+        [InlineKeyboardButton("🗺️ Маршрут", callback_data="show_route")],
         [InlineKeyboardButton("⚠️ Сообщить о проблеме", callback_data="report_problem")],
-        [InlineKeyboardButton("📋 Мои смены", callback_data="my_shifts")]
+        [InlineKeyboardButton("💬 Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("📊 Отчет о сменах", callback_data="shifts_report")],
+        [InlineKeyboardButton("🅿️ Парковка", callback_data="parking_check")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_driver_menu():
+    """Основное меню водителя без кнопки назад"""
+    keyboard = [
+        [InlineKeyboardButton("🚗 Начать смену", callback_data="start_shift")],
+        [InlineKeyboardButton("🔍 Осмотр автомобиля", callback_data="car_inspection")],
+        [InlineKeyboardButton("🗺️ Маршрут", callback_data="show_route")],
+        [InlineKeyboardButton("⚠️ Сообщить о проблеме", callback_data="report_problem")],
+        [InlineKeyboardButton("💬 Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("📊 Отчет о сменах", callback_data="shifts_report")],
+        [InlineKeyboardButton("🅿️ Парковка", callback_data="parking_check")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_logist_dialog_keyboard():
-    """Диалоговая клавиатура логиста"""
+    """Клавиатура для логиста с кнопкой назад"""
     keyboard = [
-        [InlineKeyboardButton("Маршруты", callback_data="show_route")],
-        [InlineKeyboardButton("Доставки", callback_data="delivery_list")],
-        [InlineKeyboardButton("Отчет смен", callback_data="shifts_report")],
-        [InlineKeyboardButton("Чат", callback_data="open_chat")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_roles")]
+        [InlineKeyboardButton("🚚 Список доставок", callback_data="delivery_list")],
+        [InlineKeyboardButton("💬 Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("📊 Отчеты", callback_data="report")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_logist_menu():
+    """Основное меню логиста без кнопки назад"""
+    keyboard = [
+        [InlineKeyboardButton("🚚 Список доставок", callback_data="delivery_list")],
+        [InlineKeyboardButton("💬 Чат", callback_data="open_chat")],
+        [InlineKeyboardButton("📊 Отчеты", callback_data="report")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -338,7 +384,7 @@ def get_car_inspection_keyboard():
 def get_cargo_keyboard(cargo_items):
     """Клавиатура для загрузки товаров"""
     keyboard = []
-    
+
     all_loaded = True
     for item in cargo_items:
         if item.is_loaded:
@@ -346,10 +392,10 @@ def get_cargo_keyboard(cargo_items):
         else:
             keyboard.append([InlineKeyboardButton(f"📦 {item.item_number} - {item.item_name} [ЗАГРУЗИТЬ]", callback_data=f"load_item_{item.id}")])
             all_loaded = False
-    
+
     if all_loaded and cargo_items:
         keyboard.append([InlineKeyboardButton("🚚 К ДОСТАВКЕ", callback_data="ready_for_delivery")])
-    
+
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -364,35 +410,35 @@ def get_inspection_complete_keyboard():
 def get_active_shifts_keyboard(shifts):
     """Клавиатура активных смен"""
     keyboard = []
-    
+
     for shift in shifts:
         car_info = f"{shift.car.number}"
         if shift.car.brand:
             car_info += f" ({shift.car.brand})"
-        
+
         shift_text = f"{shift.driver.name} - {car_info}"
         keyboard.append([InlineKeyboardButton(shift_text, callback_data=f"view_shift_{shift.id}")])
-    
+
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_shifts_section")])
     return InlineKeyboardMarkup(keyboard)
 
 def get_shifts_history_keyboard(shifts):
     """Клавиатура истории смен"""
     keyboard = []
-    
+
     for shift in shifts:
         car_info = f"{shift.car.number}"
         if shift.car.brand:
             car_info += f" ({shift.car.brand})"
-        
+
         status = "🟢" if shift.is_active else "🔴"
         date_str = shift.start_time.strftime('%d.%m')
         shift_text = f"{status} {date_str} - {shift.driver.name} - {car_info}"
         keyboard.append([InlineKeyboardButton(shift_text, callback_data=f"view_shift_{shift.id}")])
-        
+
         # Добавляем кнопку для просмотра фото осмотра
         keyboard.append([InlineKeyboardButton(f"📸 Фото осмотра - {shift.driver.name}", callback_data=f"show_photos_{shift.id}")])
-    
+
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_shifts_section")])
     return InlineKeyboardMarkup(keyboard)
 

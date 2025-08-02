@@ -1,13 +1,14 @@
+
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID
 from handlers.auth import start, handle_contact, create_admin, handle_role_selection, setup_admin_roles, handle_contact_help, handle_multi_role_selection
 from keyboards import get_role_selection
-from handlers.driver import start_shift, select_car, show_route, report_problem, handle_problem_report, handle_problem_description, handle_shift_photo
-from handlers.inspection import car_inspection, start_inspection, select_car_for_inspection, handle_inspection_photo, confirm_start_shift, loading_cargo, load_cargo_item, ready_for_delivery
+from handlers.driver import driver_start, car_inspection, select_car_for_inspection, report_problem, handle_problem_report, handle_problem_description, my_shifts, back_to_menu, handle_inspection_photo
+from handlers.inspection import start_inspection, confirm_start_shift, loading_cargo, load_cargo_item, ready_for_delivery
 from handlers.delivery import delivery_list
 from handlers.admin import (
-    admin_panel, admin_cars_section, admin_employees_section, 
+    admin_panel, admin_employees_section, admin_cars_section, 
     admin_shifts_section, admin_reports_section, employees_stats, 
     shifts_stats, view_car_info, view_delivered_items, view_shift_details,
     view_shift_inspection, view_shift_cargo, active_shifts, 
@@ -20,9 +21,9 @@ from handlers.admin_actions import (
     handle_add_driver, handle_add_logist, handle_add_car, handle_confirm,
     show_drivers_list, edit_driver, delete_driver, edit_driver_field,
     show_logists_list, edit_logist, delete_logist, edit_logist_field,
-    manage_cars, show_cars_list, edit_car, delete_car, edit_car_field,
+    show_cars_list, edit_car, delete_car, edit_car_field,
     show_active_shifts, end_shift, cancel_shift, shifts_history as admin_shifts_history,
-    manage_drivers, manage_logists, show_employees_list, handle_admin_text
+    handle_admin_text
 )
 from handlers.chat import chat, write_message, send_message_to_chat, refresh_chat
 from handlers.parking import parking_check
@@ -51,8 +52,10 @@ async def handle_back_button(update, context):
     """Обработчик кнопки Назад"""
     user_id = update.effective_user.id
 
-    # Очищаем состояние
-    context.user_data.clear()
+    # Очищаем только временные состояния, сохраняя важные данные
+    temp_states_to_clear = ["state", "selected_car_id", "temp_shift_id", "inspection_photos", "awaiting_text_phone"]
+    for key in temp_states_to_clear:
+        context.user_data.pop(key, None)
 
     # Если это админ
     if user_id == ADMIN_ID:
@@ -78,26 +81,35 @@ async def handle_back_button(update, context):
 
         if user:
             if user.role == "driver":
-                from keyboards import get_driver_menu
-                keyboard = get_driver_menu()
-                text = f"Меню водителя\n\nВыберите действие:"
+                from handlers.driver import show_driver_menu
+                await show_driver_menu(update, context, user.name)
             elif user.role == "logist":
                 from keyboards import get_logist_menu
                 keyboard = get_logist_menu()
                 text = f"Меню логиста\n\nВыберите действие:"
+                
+                try:
+                    await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+                except:
+                    message = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=text,
+                        reply_markup=keyboard
+                    )
+                    context.user_data["last_message_id"] = message.message_id
             else:
                 keyboard = get_role_selection()
                 text = "Выберите вашу роль:"
-
-            try:
-                await update.callback_query.edit_message_text(text, reply_markup=keyboard)
-            except:
-                message = await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=text,
-                    reply_markup=keyboard
-                )
-                context.user_data["last_message_id"] = message.message_id
+                
+                try:
+                    await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+                except:
+                    message = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=text,
+                        reply_markup=keyboard
+                    )
+                    context.user_data["last_message_id"] = message.message_id
         else:
             await start(update, context)
     finally:
@@ -114,6 +126,11 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         await handle_text_phone_input(update, context, text)
         return
 
+    # Проверяем, ожидается ли описание проблемы
+    if context.user_data.get("awaiting_problem_description"):
+        await handle_problem_description(update, context)
+        return
+
     # Удаляем сообщение пользователя после ввода
     await delete_previous_messages(update, context)
 
@@ -125,9 +142,6 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     elif current_state in [states.ADDING_DRIVER, states.ADDING_LOGIST, states.ADDING_CAR, states.EDITING_DRIVER, states.EDITING_LOGIST]:
         await handle_admin_text(update, context)
         return
-    elif current_state == "problem_description":
-        await handle_problem_description(update, context)
-        return
 
     # Если сообщение не распознано
     message = await context.bot.send_message(
@@ -136,19 +150,15 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     context.user_data["last_message_id"] = message.message_id
 
-async def block_all_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Блокировка фотографий вне процесса осмотра"""
-    current_state = context.user_data.get("state")
-    photo_states = [
-        states.PHOTO_CAR_FRONT, states.PHOTO_CAR_BACK, 
-        states.PHOTO_CAR_LEFT, states.PHOTO_CAR_RIGHT,
-        states.PHOTO_COOLANT, states.PHOTO_OIL, states.PHOTO_INTERIOR
-    ]
+async def handle_photo_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка фотографий"""
+    # Проверяем, находимся ли мы в процессе осмотра
+    if context.user_data.get("inspection_shift_id") and context.user_data.get("current_photo_step"):
+        handled = await handle_inspection_photo(update, context)
+        if handled:
+            return
 
-    # Если мы в процессе осмотра, пропускаем блокировку
-    if current_state in photo_states:
-        return
-
+    # Если фото не обработано в рамках осмотра - блокируем
     await delete_previous_messages(update, context)
     message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -165,21 +175,6 @@ async def block_all_media(update, context):
     )
     context.user_data["last_message_id"] = message.message_id
 
-async def cleanup_admin_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Очистка чата администратора (удаление последних сообщений)"""
-    chat_id = update.effective_chat.id
-    message_ids = context.chat_data.get("admin_message_ids", [])
-
-    # Удаляем сообщения в обратном порядке
-    for message_id in reversed(message_ids):
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-        except Exception as e:
-            print(f"Ошибка при удалении сообщения {message_id}: {e}")
-
-    # Очищаем список message_ids
-    context.chat_data["admin_message_ids"] = []
-
 async def handle_dialog_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик inline кнопок диалога"""
     query = update.callback_query
@@ -195,13 +190,7 @@ async def handle_dialog_callbacks(update: Update, context: ContextTypes.DEFAULT_
         context.user_data.pop("state", None)
         await chat(update, context)
     elif data == "back_to_menu":
-        await handle_back_button(update, context)
-    elif data == "start_shift":
-        await start_shift(update, context)
-    elif data == "show_route":
-        await show_route(update, context)
-    elif data == "report_problem":
-        await report_problem(update, context)
+        await back_to_menu(update, context)
     elif data == "delivery_list":
         await delivery_list(update, context)
     elif data == "shifts_report":
@@ -211,7 +200,10 @@ async def handle_dialog_callbacks(update: Update, context: ContextTypes.DEFAULT_
     elif data == "report":
         await report(update, context)
     elif data == "cancel_action":
-        context.user_data.clear()
+        # Очищаем только временные состояния
+        temp_states_to_clear = ["state", "selected_car_id", "temp_shift_id", "inspection_photos"]
+        for key in temp_states_to_clear:
+            context.user_data.pop(key, None)
         await handle_back_button(update, context)
 
     await query.answer()
@@ -228,11 +220,8 @@ def main():
     # Обработчик контактов
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
 
-    # Обработчик фотографий осмотра (должен быть ДО блокировки)
-    application.add_handler(MessageHandler(filters.PHOTO, handle_inspection_photo))
-
-    # ПОЛНАЯ блокировка всех остальных фотографий
-    application.add_handler(MessageHandler(filters.PHOTO, block_all_photos))
+    # Обработчик фотографий (должен быть первым для корректной обработки)
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_messages))
 
     # Обработчики админ панели
     application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
@@ -279,11 +268,15 @@ def main():
     application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^name_edit_logist_\\d+$"))
     application.add_handler(CallbackQueryHandler(edit_logist_field, pattern="^phone_edit_logist_\\d+$"))
 
-    application.add_handler(CallbackQueryHandler(select_car, pattern="^select_car_"))
     application.add_handler(CallbackQueryHandler(handle_role_selection, pattern="^role_(admin|driver|logist)$"))
 
-    # Обработчики для проблем водителей
+    # Обработчики для водителей
+    application.add_handler(CallbackQueryHandler(car_inspection, pattern="^car_inspection$"))
+    application.add_handler(CallbackQueryHandler(select_car_for_inspection, pattern="^select_car_\\d+$"))
+    application.add_handler(CallbackQueryHandler(report_problem, pattern="^report_problem$"))
     application.add_handler(CallbackQueryHandler(handle_problem_report, pattern="^problem_"))
+    application.add_handler(CallbackQueryHandler(my_shifts, pattern="^my_shifts$"))
+    application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
 
     # Callback обработчики для редактирования логистов
     application.add_handler(CallbackQueryHandler(edit_logist, pattern=r"^edit_logist_\d+$"))
@@ -309,16 +302,14 @@ def main():
     application.add_handler(CallbackQueryHandler(show_active_shifts, pattern="^active_shifts$"))
 
     # Обработчики для осмотра автомобиля
-    application.add_handler(CallbackQueryHandler(car_inspection, pattern="^car_inspection$"))
     application.add_handler(CallbackQueryHandler(start_inspection, pattern="^start_inspection$"))
-    application.add_handler(CallbackQueryHandler(select_car_for_inspection, pattern="^inspect_car_"))
     application.add_handler(CallbackQueryHandler(confirm_start_shift, pattern="^confirm_start_shift$"))
     application.add_handler(CallbackQueryHandler(loading_cargo, pattern="^loading_cargo$"))
     application.add_handler(CallbackQueryHandler(load_cargo_item, pattern="^load_item_"))
     application.add_handler(CallbackQueryHandler(ready_for_delivery, pattern="^ready_for_delivery$"))
 
     # Обработчики inline кнопок диалога
-    application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|back_to_menu|open_chat|cancel_writing|start_shift|show_route|report_problem|delivery_list|shifts_report|parking_check|report|cancel_action)$"))
+    application.add_handler(CallbackQueryHandler(handle_dialog_callbacks, pattern="^(write_message|refresh_chat|open_chat|cancel_writing|delivery_list|shifts_report|parking_check|report|cancel_action)$"))
 
     # Обработчик помощи с контактом и методов ввода телефона
     application.add_handler(CallbackQueryHandler(handle_contact_help, pattern="^contact_help$"))
@@ -356,7 +347,7 @@ def main():
     # Обработчик всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 
-    # ПОЛНАЯ блокировка всех медиа файлов и изображений
+    # ПОЛНАЯ блокировка всех медиа файлов
     application.add_handler(MessageHandler(
         filters.VIDEO | filters.AUDIO | filters.Document.ALL | 
         filters.VOICE | filters.VIDEO_NOTE | filters.Sticker.ALL | 

@@ -19,6 +19,94 @@ async def delete_previous_messages(update, context):
     except Exception as e:
         print(f"Ошибка при удалении текущего сообщения: {e}")
 
+async def find_user_by_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Поиск пользователя по имени для диагностики"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = "🔍 ДИАГНОСТИКА ПОЛЬЗОВАТЕЛЯ\n\n"
+    text += "Введите имя пользователя для поиска:"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    try:
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    except:
+        message = await query.message.reply_text(text=text, reply_markup=reply_markup)
+        context.user_data["last_message_id"] = message.message_id
+    
+    context.user_data["awaiting_user_search"] = True
+
+async def search_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE, search_name: str):
+    """Поиск информации о пользователе"""
+    db = SessionLocal()
+    try:
+        # Ищем пользователей по имени (частичное совпадение)
+        users = db.query(User).filter(User.name.like(f"%{search_name}%")).all()
+        
+        if not users:
+            text = f"❌ Пользователь с именем '{search_name}' не найден в базе данных.\n\n"
+            text += "Возможные причины:\n"
+            text += "• Пользователь не был добавлен администратором\n"
+            text += "• Неточное написание имени\n"
+            text += "• Пользователь был удален\n\n"
+            text += "Рекомендации:\n"
+            text += "1. Проверьте правильность написания имени\n"
+            text += "2. Добавьте пользователя через админ панель\n"
+            text += "3. Проверьте список всех пользователей"
+        else:
+            text = f"✅ Найдено пользователей: {len(users)}\n\n"
+            
+            for i, user in enumerate(users, 1):
+                text += f"👤 Пользователь {i}:\n"
+                text += f"• Имя: {user.name}\n"
+                text += f"• Телефон: {user.phone}\n"
+                text += f"• Роль: {user.role}\n"
+                text += f"• Telegram ID: {user.telegram_id or 'Не привязан'}\n"
+                
+                if not user.telegram_id:
+                    text += "⚠️ ПРОБЛЕМА: Telegram ID не привязан\n"
+                
+                text += "\n"
+            
+            if any(not user.telegram_id for user in users):
+                text += "🔧 РЕШЕНИЕ ПРОБЛЕМ:\n"
+                text += "• Пользователь должен отправить свой контакт боту\n"
+                text += "• Проверьте правильность номера телефона\n"
+                text += "• Убедитесь что пользователь выбрал правильную роль\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔍 Найти другого", callback_data="find_user_by_name")],
+            [InlineKeyboardButton("👥 Все пользователи", callback_data="employees_list")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="admin_panel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Удаляем предыдущие сообщения
+        try:
+            if context.user_data.get("last_message_id"):
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=context.user_data["last_message_id"]
+                )
+            await update.message.delete()
+        except:
+            pass
+        
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=reply_markup
+        )
+        context.user_data["last_message_id"] = message.message_id
+        context.user_data.pop("awaiting_user_search", None)
+        
+    finally:
+        db.close()
+
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Админ панель"""
     text = "Администрирование"
@@ -320,6 +408,68 @@ async def view_shift_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.answer()
 
+async def view_shift_photos_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Просмотр информации о фотографиях в БД"""
+    query = update.callback_query
+    shift_id = int(query.data.split("_")[3])
+
+    db = SessionLocal()
+    try:
+        shift = db.query(Shift).filter(Shift.id == shift_id).first()
+        if not shift:
+            await query.answer("Смена не найдена!")
+            return
+
+        # Получаем фото из базы данных
+        photos = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == shift_id).order_by(ShiftPhoto.created_at).all()
+
+        text = f"📋 ИНФОРМАЦИЯ О ФОТО В БАЗЕ ДАННЫХ\n\n"
+        text += f"👤 Водитель: {shift.driver.name}\n"
+        text += f"🚗 Автомобиль: {shift.car.number}\n"
+        text += f"📅 Смена: {shift.start_time.strftime('%d.%m.%Y %H:%M')}\n"
+        text += f"📊 Статус смены: {'🟢 Активна' if shift.is_active else '🔴 Завершена'}\n\n"
+
+        if not photos:
+            text += "❌ Фотографии в базе данных отсутствуют\n"
+            text += "Возможные причины:\n"
+            text += "• Осмотр не проводился\n"
+            text += "• Ошибка сохранения фото\n"
+            text += "• Данные были удалены"
+        else:
+            text += f"📸 ФОТОГРАФИИ В БД: {len(photos)} шт.\n\n"
+            
+            photo_names = {
+                'front': '🚗 Передняя часть',
+                'back': '🚙 Задняя часть',
+                'left': '⬅️ Левый борт',
+                'right': '➡️ Правый борт', 
+                'oil': '🛢️ Уровень масла',
+                'coolant': '❄️ Охлаждающая жидкость',
+                'interior': '🪑 Салон автомобиля'
+            }
+            
+            for i, photo in enumerate(photos, 1):
+                photo_name = photo_names.get(photo.photo_type, f"Неизвестный тип: {photo.photo_type}")
+                text += f"{i}. {photo_name}\n"
+                text += f"   🆔 БД ID: {photo.id}\n"
+                text += f"   📄 Telegram File ID: ...{photo.file_id[-15:]}\n"
+                text += f"   📅 Сохранено: {photo.created_at.strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+
+        # Кнопки
+        buttons = []
+        if photos:
+            buttons.append([InlineKeyboardButton("📸 Показать все фото", callback_data=f"view_photos_{shift_id}")])
+        buttons.append([InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")])
+
+        await query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    finally:
+        db.close()
+
+    await query.answer()
+
 async def view_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Просмотр фотографий осмотра смены"""
     query = update.callback_query
@@ -328,76 +478,79 @@ async def view_shift_inspection(update: Update, context: ContextTypes.DEFAULT_TY
     db = SessionLocal()
     try:
         shift = db.query(Shift).filter(Shift.id == shift_id).first()
-        photos = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == shift_id).all()
-
         if not shift:
             await query.answer("Смена не найдена!")
             return
+
+        # Получаем фото из базы данных
+        photos = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == shift_id).order_by(ShiftPhoto.created_at).all()
 
         if not photos:
             text = f"📸 ФОТО ОСМОТРА\n\n"
             text += f"👤 Водитель: {shift.driver.name}\n"
             text += f"🚗 Автомобиль: {shift.car.number}\n\n"
-            text += "❌ Фотографии осмотра не найдены"
+            text += "❌ Фотографии осмотра не найдены в базе данных"
 
-            try:
-                await query.edit_message_text(
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
-                    ]])
-                )
-            except:
-                message = await query.message.reply_text(
-                    text=text,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
-                    ]])
-                )
-                context.user_data["last_message_id"] = message.message_id
+            await query.edit_message_text(
+                text=text,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                ]])
+            )
         else:
-            # Отправляем каждое фото отдельно
+            # Названия типов фото
             photo_names = {
-                'front': '🚗 Спереди',
-                'back': '🚙 Сзади', 
-                'left': '⬅️ Левый борт',
+                'front': '🚗 Передняя часть',
+                'back': '🚙 Задняя часть',
+                'left': '⬅️ Левый борт', 
                 'right': '➡️ Правый борт',
                 'oil': '🛢️ Уровень масла',
                 'coolant': '❄️ Охлаждающая жидкость',
-                'interior': '🪑 Салон'
+                'interior': '🪑 Салон автомобиля'
             }
 
-            # Сначала отправляем заголовок
-            try:
-                await query.edit_message_text(
-                    text=f"📸 ФОТОГРАФИИ ОСМОТРА (Смена #{shift_id})",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
-                    ]])
-                )
-            except:
-                pass
+            # Отправляем заголовок
+            header_text = f"📸 ФОТО ОСМОТРА АВТОМОБИЛЯ\n\n"
+            header_text += f"👤 Водитель: {shift.driver.name}\n"
+            header_text += f"🚗 Автомобиль: {shift.car.number}\n"
+            header_text += f"📅 Дата смены: {shift.start_time.strftime('%d.%m.%Y %H:%M')}\n"
+            header_text += f"📸 Количество фото: {len(photos)} шт.\n\n"
+            header_text += "Загружаю фотографии из базы данных..."
 
-            # Затем отправляем каждое фото с подписью
+            await query.edit_message_text(
+                text=header_text,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
+                ]])
+            )
+
+            # Отправляем каждое фото
             for i, photo in enumerate(photos, 1):
-                photo_name = photo_names.get(photo.photo_type, photo.photo_type)
+                photo_name = photo_names.get(photo.photo_type, f"Фото {photo.photo_type}")
+                
                 try:
+                    caption = f"📸 {photo_name}\n"
+                    caption += f"👤 {shift.driver.name} | 🚗 {shift.car.number}\n"
+                    caption += f"📊 Фото {i} из {len(photos)}\n"
+                    caption += f"🆔 БД ID: {photo.id} | File ID: ...{photo.file_id[-10:]}\n"
+                    caption += f"📅 {photo.created_at.strftime('%d.%m.%Y %H:%M')}"
+
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=photo.file_id,
-                        caption=f"{photo_name} | 👤 {shift.driver.name} | 🚗 {shift.car.number}\n📊 Фото {i} из {len(photos)}"
+                        caption=caption
                     )
                 except Exception as e:
-                    print(f"Ошибка отправки фото: {e}")
+                    print(f"Ошибка отправки фото ID {photo.id}: {e}")
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
-                        text=f"❌ Ошибка загрузки фото: {photo_name}"
+                        text=f"❌ Ошибка загрузки фото: {photo_name}\n🆔 БД ID: {photo.id}\n📄 File ID: {photo.file_id}\n⚠️ Ошибка: {str(e)}"
                     )
 
-            # Отправляем итоговое сообщение
+            # Финальное сообщение
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"✅ Все фотографии осмотра отправлены!\n\n👤 Водитель: {shift.driver.name}\n🚗 Автомобиль: {shift.car.number}\n📸 Всего фото: {len(photos)}",
+                text=f"✅ Показаны все фотографии осмотра из базы данных!\n\n📋 Смена #{shift_id}\n👤 {shift.driver.name}\n🚗 {shift.car.number}\n📸 Фото: {len(photos)} шт.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("🔙 Назад к смене", callback_data=f"view_shift_{shift_id}")
                 ]])

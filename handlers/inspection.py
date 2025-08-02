@@ -1,4 +1,3 @@
-
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database import SessionLocal, User, Car, Shift, ShiftPhoto, CargoItem
@@ -20,20 +19,46 @@ async def delete_previous_messages(update, context):
         pass
 
 async def car_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начать осмотр автомобиля"""
-    await delete_previous_messages(update, context)
-
+    """Начало осмотра автомобиля"""
     user_id = update.effective_user.id
     db = SessionLocal()
 
     try:
         user = db.query(User).filter(User.telegram_id == user_id).first()
         if not user:
-            message = await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Пользователь не найден!"
-            )
-            context.user_data["last_message_id"] = message.message_id
+            # Пользователь не найден - показываем детальную информацию для диагностики
+            username = update.effective_user.first_name or "Пользователь"
+            if update.effective_user.last_name:
+                username += f" {update.effective_user.last_name}"
+
+            text = f"❌ Пользователь не авторизован!\n\n"
+            text += f"👤 Имя: {username}\n"
+            text += f"🆔 Telegram ID: {user_id}\n\n"
+            text += f"💡 Обратитесь к администратору для добавления в систему.\n\n"
+            text += f"🔄 Для авторизации используйте команду /start"
+
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = [[
+                InlineKeyboardButton("🔄 Попробовать авторизацию", callback_data="back_to_start")
+            ]]
+
+            try:
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    await update.callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    message = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=text,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                    context.user_data["last_message_id"] = message.message_id
+            except:
+                message = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                context.user_data["last_message_id"] = message.message_id
             return
 
         # Проверяем, есть ли активная смена
@@ -151,9 +176,69 @@ async def handle_inspection_photo(update: Update, context: ContextTypes.DEFAULT_
     if current_state not in photo_states:
         return False
 
-    # Сохраняем фото
+    # Сохраняем фото в базу данных сразу
     photo = update.message.photo[-1]
-    context.user_data["inspection_photos"][current_state] = photo.file_id
+    car_id = context.user_data.get("selected_car_id")
+
+    if not car_id:
+        await update.message.reply_text("Ошибка: автомобиль не выбран")
+        return False
+
+    # Определяем тип фото
+    photo_type_map = {
+        states.PHOTO_CAR_FRONT: "front",
+        states.PHOTO_CAR_BACK: "back", 
+        states.PHOTO_CAR_LEFT: "left",
+        states.PHOTO_CAR_RIGHT: "right",
+        states.PHOTO_OIL: "oil",
+        states.PHOTO_COOLANT: "coolant",
+        states.PHOTO_INTERIOR: "interior"
+    }
+
+    photo_type = photo_type_map.get(current_state)
+    if not photo_type:
+        return False
+
+    # Сохраняем в базу
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user:
+            await update.message.reply_text("Пользователь не найден")
+            return False
+
+        # Создаем временную смену для фото или используем существующую
+        temp_shift_id = context.user_data.get("temp_shift_id")
+        if not temp_shift_id:
+            # Создаем временную запись смены
+            temp_shift = Shift(
+                driver_id=user.id,
+                car_id=car_id,
+                start_time=datetime.now(),
+                is_active=False  # Пока что неактивная
+            )
+            db.add(temp_shift)
+            db.flush()
+            context.user_data["temp_shift_id"] = temp_shift.id
+            temp_shift_id = temp_shift.id
+
+        # Сохраняем фото
+        shift_photo = ShiftPhoto(
+            shift_id=temp_shift_id,
+            photo_type=photo_type,
+            file_id=photo.file_id
+        )
+        db.add(shift_photo)
+        db.commit()
+
+        print(f"Фото сохранено в БД: {photo_type} -> ID:{shift_photo.id}")
+
+    except Exception as e:
+        print(f"Ошибка сохранения фото в БД: {e}")
+        await update.message.reply_text(f"Ошибка сохранения фото: {str(e)}")
+        return False
+    finally:
+        db.close()
 
     # Удаляем сообщение с фото
     try:
@@ -176,7 +261,7 @@ async def handle_inspection_photo(update: Update, context: ContextTypes.DEFAULT_
 
     if next_state:
         context.user_data["state"] = next_state
-        text = f"✅ Фото принято!\n\n{next_text}\n\n"
+        text = f"✅ Фото {photo_type} сохранено в БД!\n\n{next_text}\n\n"
         text += "НАПОМИНАНИЕ:\n"
         text += "• ТОЛЬКО камера телефона\n"
         text += "• Съемка в реальном времени\n"
@@ -217,9 +302,9 @@ async def complete_inspection(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def confirm_start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение начала смены после осмотра"""
     car_id = context.user_data.get("selected_car_id")
-    inspection_photos = context.user_data.get("inspection_photos", {})
+    temp_shift_id = context.user_data.get("temp_shift_id")
 
-    if not car_id or not inspection_photos:
+    if not car_id or not temp_shift_id:
         await update.callback_query.answer("Ошибка: данные осмотра не найдены!")
         return
 
@@ -232,36 +317,17 @@ async def confirm_start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.callback_query.answer("Ошибка: пользователь или автомобиль не найден!")
             return
 
-        # Создаем новую смену
-        new_shift = Shift(
-            driver_id=user.id,
-            car_id=car.id,
-            start_time=datetime.now(),
-            is_active=True
-        )
-        db.add(new_shift)
-        db.flush()
+        # Активируем временную смену
+        temp_shift = db.query(Shift).filter(Shift.id == temp_shift_id).first()
+        if temp_shift:
+            temp_shift.is_active = True
+            temp_shift.start_time = datetime.now()
+        else:
+            await update.callback_query.answer("Ошибка: временная смена не найдена!")
+            return
 
-        # Сохраняем фотографии осмотра
-        photo_type_map = {
-            states.PHOTO_CAR_FRONT: "front",
-            states.PHOTO_CAR_BACK: "back",
-            states.PHOTO_CAR_LEFT: "left",
-            states.PHOTO_CAR_RIGHT: "right",
-            states.PHOTO_OIL: "oil",
-            states.PHOTO_COOLANT: "coolant",
-            states.PHOTO_INTERIOR: "interior"
-        }
-
-        for state, file_id in inspection_photos.items():
-            photo_type = photo_type_map.get(state)
-            if photo_type:
-                shift_photo = ShiftPhoto(
-                    shift_id=new_shift.id,
-                    photo_type=photo_type,
-                    file_id=file_id
-                )
-                db.add(shift_photo)
+        # Проверяем количество сохраненных фото
+        photos_count = db.query(ShiftPhoto).filter(ShiftPhoto.shift_id == temp_shift_id).count()
 
         # Создаем тестовые товары для загрузки
         test_items = [
@@ -272,7 +338,7 @@ async def confirm_start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         for item in test_items:
             cargo_item = CargoItem(
-                shift_id=new_shift.id,
+                shift_id=temp_shift_id,
                 item_number=item["number"],
                 item_name=item["name"],
                 is_loaded=False
@@ -290,8 +356,8 @@ async def confirm_start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         text = f"✅ СМЕНА НАЧАТА!\n\n"
         text += f"🚗 Автомобиль: {car_info}\n"
-        text += f"⏰ Время начала: {new_shift.start_time.strftime('%H:%M')}\n"
-        text += f"📸 Фотографии осмотра: Сохранены\n\n"
+        text += f"⏰ Время начала: {temp_shift.start_time.strftime('%H:%M')}\n"
+        text += f"📸 Фотографии осмотра: {photos_count} шт. сохранено в БД\n\n"
         text += "Можете приступать к загрузке товаров!"
 
         await update.callback_query.edit_message_text(
@@ -302,8 +368,10 @@ async def confirm_start_shift(update: Update, context: ContextTypes.DEFAULT_TYPE
             ]])
         )
 
-        # Очищаем временные данные
-        context.user_data.clear()
+        # Очищаем только временные данные осмотра, сохраняя авторизацию
+        temp_data_to_clear = ["selected_car_id", "temp_shift_id", "state", "inspection_photos"]
+        for key in temp_data_to_clear:
+            context.user_data.pop(key, None)
 
     except Exception as e:
         await update.callback_query.answer(f"Ошибка создания смены: {str(e)}")
@@ -379,7 +447,7 @@ async def load_cargo_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         cargo_item = db.query(CargoItem).filter(CargoItem.id == item_id).first()
-        
+
         if not cargo_item:
             await query.answer("Товар не найден!")
             return
@@ -390,7 +458,7 @@ async def load_cargo_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Обновляем список
         cargo_items = db.query(CargoItem).filter(CargoItem.shift_id == cargo_item.shift_id).all()
-        
+
         loaded_count = sum(1 for item in cargo_items if item.is_loaded)
         total_count = len(cargo_items)
 
